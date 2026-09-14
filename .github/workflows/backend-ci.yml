@@ -58,6 +58,7 @@ jobs:
           DB_URL: jdbc:postgresql://localhost:5432/hrm
           DB_USERNAME: postgres
           DB_PASSWORD: postgres
+          SPRING_PROFILES_ACTIVE: test
         run: ./mvnw clean test
 
       - name: Build application
