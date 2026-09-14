@@ -13,4 +13,7 @@ public interface AccountRoleRepository extends JpaRepository<AccountRole, Accoun
 
     @Query("SELECT ar FROM AccountRole ar JOIN FETCH ar.role WHERE ar.account.id = :accountId")
     List<AccountRole> findByAccountIdWithRole(@Param("accountId") Long accountId);
+
+    @Query("SELECT COUNT(ar) FROM AccountRole ar WHERE ar.role.code = :roleCode")
+    long countByRoleCode(@Param("roleCode") String roleCode);
 }

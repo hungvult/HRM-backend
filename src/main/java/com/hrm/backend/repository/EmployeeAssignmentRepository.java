@@ -11,6 +11,8 @@ import java.util.Optional;
 @Repository
 public interface EmployeeAssignmentRepository extends JpaRepository<EmployeeAssignment, Long> {
 
+    boolean existsByEmployeeIdAndManagerEmployeeIdAndIsCurrentTrue(Long employeeId, Long managerEmployeeId);
+
     @Query("SELECT ea FROM EmployeeAssignment ea " +
            "LEFT JOIN FETCH ea.department " +
            "LEFT JOIN FETCH ea.position " +
