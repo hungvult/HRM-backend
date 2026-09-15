@@ -90,11 +90,11 @@ On macOS or Linux:
 
 ## Environment Variables
 
-| Name | Description | Default |
-| --- | --- | --- |
-| `DB_URL` | PostgreSQL JDBC connection URL | `jdbc:postgresql://localhost:5432/hrm` |
-| `DB_USERNAME` | PostgreSQL username | `postgres` |
-| `DB_PASSWORD` | PostgreSQL password | Required |
+| Name          | Description                    | Default                                |
+| ------------- | ------------------------------ | -------------------------------------- |
+| `DB_URL`      | PostgreSQL JDBC connection URL | `jdbc:postgresql://localhost:5432/hrm` |
+| `DB_USERNAME` | PostgreSQL username            | `postgres`                             |
+| `DB_PASSWORD` | PostgreSQL password            | Required                               |
 
 ## Troubleshooting
 
