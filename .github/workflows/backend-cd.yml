@@ -11,6 +11,7 @@ env:
 
 jobs:
   docker:
+    name: Build and Push Docker Image
     runs-on: ubuntu-latest
 
     permissions:
@@ -39,3 +40,69 @@ jobs:
         run: |
           docker push ${{ env.IMAGE_NAME }}:latest
           docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    needs: docker
+
+    steps:
+      - name: Deploy backend to VPS
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          envs: GHCR_PAT
+          script_stop: true
+          script: |
+            set -e
+
+            echo "========================================"
+            echo "Starting HRM Backend deployment"
+            echo "========================================"
+
+            echo "Logging in to GHCR..."
+            echo "$GHCR_PAT" | docker login ghcr.io \
+              --username hungvult \
+              --password-stdin
+
+            echo "Pulling latest backend image..."
+            docker pull ghcr.io/hungvult/hrm-backend:latest
+
+            echo "Stopping old HRM backend container..."
+            docker stop hrm-backend 2>/dev/null || true
+
+            echo "Removing old HRM backend container..."
+            docker rm hrm-backend 2>/dev/null || true
+
+            echo "Starting new HRM backend container..."
+            docker run -d \
+              --name hrm-backend \
+              --restart unless-stopped \
+              --network hrm-network \
+              -p 8082:8080 \
+              --env-file /opt/hrm/.env \
+              ghcr.io/hungvult/hrm-backend:latest
+
+            echo "Waiting for backend container..."
+            sleep 10
+
+            echo "Checking container status..."
+            docker ps --filter name=hrm-backend
+
+            echo "Checking backend logs..."
+            docker logs hrm-backend --tail 30
+
+            echo "Testing backend endpoint..."
+            curl -i --max-time 10 http://localhost:8082/api || true
+
+            echo "Logging out from GHCR..."
+            docker logout ghcr.io || true
+
+            echo "========================================"
+            echo "HRM Backend deployment completed"
+            echo "========================================"
