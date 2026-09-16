@@ -11,7 +11,7 @@ public class LoginResponse {
     @Builder.Default
     private String tokenType = "Bearer";
     private long expiresIn;
-    private CurrentUserResponse user;
+    private LoginUserResponse user;
     
     @JsonIgnore
     private String refreshToken;

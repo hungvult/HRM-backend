@@ -2,6 +2,7 @@ package com.hrm.backend.controller;
 
 import com.hrm.backend.dto.request.LoginRequest;
 import com.hrm.backend.dto.response.LoginResponse;
+import com.hrm.backend.dto.response.RefreshTokenResponse;
 import com.hrm.backend.security.CustomUserDetails;
 import com.hrm.backend.security.JwtService;
 import com.hrm.backend.service.AuthService;
@@ -30,7 +31,7 @@ public class AuthController {
     private static final String REFRESH_TOKEN_COOKIE_NAME = "refresh_token";
 
     @PostMapping("/login")
-    @Operation(summary = "Đăng nhập", description = "Xác thực bằng username hoặc email và mật khẩu; refresh token được gửi qua HttpOnly cookie.")
+    @Operation(summary = "Đăng nhập", description = "Xác thực bằng username hoặc email và mật khẩu; response chỉ trả accessToken, tokenType, expiresIn và user (id, username, roles). Refresh token được gửi qua HttpOnly cookie.")
     @ApiResponses({@ApiResponse(responseCode = "200", description = "Đăng nhập thành công"), @ApiResponse(responseCode = "401", description = "Sai thông tin đăng nhập"), @ApiResponse(responseCode = "403", description = "Tài khoản bị khóa hoặc vô hiệu hóa")})
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest loginRequest, HttpServletResponse response) {
         LoginResponse loginResponse = authService.login(loginRequest);
@@ -41,9 +42,9 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
-    @Operation(summary = "Làm mới access token", description = "Dùng refresh token từ HttpOnly cookie và xoay refresh session.")
+    @Operation(summary = "Làm mới access token", description = "Dùng refresh token từ HttpOnly cookie và xoay refresh session. Response chỉ gồm accessToken, tokenType, expiresIn và user.id.")
     @ApiResponses({@ApiResponse(responseCode = "200", description = "Làm mới thành công"), @ApiResponse(responseCode = "401", description = "Refresh token không hợp lệ hoặc hết hạn"), @ApiResponse(responseCode = "403", description = "Tài khoản bị khóa hoặc vô hiệu hóa")})
-    public ResponseEntity<LoginResponse> refresh(HttpServletRequest request, HttpServletResponse response) {
+    public ResponseEntity<RefreshTokenResponse> refresh(HttpServletRequest request, HttpServletResponse response) {
         Cookie cookie = WebUtils.getCookie(request, REFRESH_TOKEN_COOKIE_NAME);
         String refreshToken = cookie != null ? cookie.getValue() : null;
 
@@ -51,7 +52,13 @@ public class AuthController {
 
         setRefreshTokenCookie(response, loginResponse.getRefreshToken(), 7 * 24 * 60 * 60);
 
-        return ResponseEntity.ok(loginResponse);
+        RefreshTokenResponse refreshResponse = RefreshTokenResponse.builder()
+                .accessToken(loginResponse.getAccessToken())
+                .tokenType(loginResponse.getTokenType())
+                .expiresIn(loginResponse.getExpiresIn())
+                .user(RefreshTokenResponse.User.builder().id(loginResponse.getUser().getId()).build())
+                .build();
+        return ResponseEntity.ok(refreshResponse);
     }
 
     @PostMapping("/logout")
