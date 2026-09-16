@@ -1,15 +1,14 @@
 package com.hrm.backend.service.impl;
 
 import com.hrm.backend.dto.request.LoginRequest;
-import com.hrm.backend.dto.response.CurrentUserResponse;
 import com.hrm.backend.dto.response.LoginResponse;
+import com.hrm.backend.dto.response.LoginUserResponse;
 import com.hrm.backend.entity.*;
 import com.hrm.backend.entity.enums.AccountStatus;
 import com.hrm.backend.exception.AuthException;
 import com.hrm.backend.repository.*;
 import com.hrm.backend.security.JwtService;
 import com.hrm.backend.service.AuthService;
-import com.hrm.backend.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -26,7 +25,7 @@ public class AuthServiceImpl implements AuthService {
     private final AccountRepository accountRepository;
     private final AuthSessionRepository authSessionRepository;
     private final AuditLogRepository auditLogRepository;
-    private final UserService userService;
+    private final AccountRoleRepository accountRoleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final HttpServletRequest request;
@@ -37,9 +36,6 @@ public class AuthServiceImpl implements AuthService {
         String identity = dto.getUsernameOrEmail().trim();
         Account account = accountRepository.findByUsernameIgnoreCaseOrEmailIgnoreCase(identity).orElseThrow(this::invalidCredentials);
         assertActive(account);
-//        System.out.println(dto.getUsernameOrEmail());
-//        System.out.print(passwordEncoder.matches(dto.getPassword(), account.getPasswordHash()));
-//        System.out.println(passwordEncoder.encode(dto.getPassword()));
         if (!passwordEncoder.matches(dto.getPassword(), account.getPasswordHash())) throw invalidCredentials();
         account.setLastLoginAt(OffsetDateTime.now());
         LoginResponse result = issueTokens(account, dto.getDeviceInfo(), request.getHeader("User-Agent"));
@@ -64,8 +60,22 @@ public class AuthServiceImpl implements AuthService {
     private LoginResponse issueTokens(Account account, String device, String agent) {
         OffsetDateTime now = OffsetDateTime.now(); String raw = jwtService.generateRefreshToken();
         AuthSession session = authSessionRepository.save(AuthSession.builder().account(account).refreshTokenHash(hash(raw)).issuedAt(now).expiresAt(now.plusDays(7)).deviceInfo(device).userAgent(agent).ipAddress(ip()).build());
-        CurrentUserResponse user = userService.getCurrentUserProfile(account.getId());
-        return LoginResponse.builder().accessToken(jwtService.generateAccessToken(account.getId(), account.getUsername(), user.getRoles(), session.getId())).expiresIn(jwtService.getAccessTokenExpirationSeconds()).user(user).refreshToken(raw).build();
+        var roles = accountRoleRepository.findByAccountIdWithRole(account.getId()).stream()
+                .map(AccountRole::getRole)
+                .map(Role::getCode)
+                .sorted()
+                .toList();
+        LoginUserResponse user = LoginUserResponse.builder()
+                .id(account.getId())
+                .username(account.getUsername())
+                .roles(roles)
+                .build();
+        return LoginResponse.builder()
+                .accessToken(jwtService.generateAccessToken(account.getId(), account.getUsername(), roles, session.getId()))
+                .expiresIn(jwtService.getAccessTokenExpirationSeconds())
+                .user(user)
+                .refreshToken(raw)
+                .build();
     }
     private void assertActive(Account a) {
         if (a.getStatus() == AccountStatus.LOCKED) throw new AuthException("AUTH_ACCOUNT_LOCKED", "Tài khoản đã bị khóa.", 403);
