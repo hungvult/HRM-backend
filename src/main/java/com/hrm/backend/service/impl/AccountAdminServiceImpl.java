@@ -71,9 +71,11 @@ public class AccountAdminServiceImpl implements AccountAdminService {
     @Override
     public AdminAccountResponse updateStatus(Long actorId, Long accountId, UpdateAccountStatusRequest req) {
         Account target = account(accountId);
-        if (actorId.equals(accountId) && req.getStatus() != AccountStatus.ACTIVE) throw conflict("CANNOT_CHANGE_OWN_STATUS", "Không thể khóa hoặc vô hiệu hóa tài khoản của chính mình.");
+        if (actorId.equals(accountId) && req.getStatus() != AccountStatus.ACTIVE)
+            throw conflict("CANNOT_CHANGE_OWN_STATUS", "Không thể khóa hoặc vô hiệu hóa tài khoản của chính mình.");
         target.setStatus(req.getStatus());
-        if (req.getStatus() != AccountStatus.ACTIVE) sessions.revokeActiveByAccountId(target.getId(), OffsetDateTime.now(), "ACCOUNT_" + req.getStatus());
+        if (req.getStatus() != AccountStatus.ACTIVE)
+            sessions.revokeActiveByAccountId(target.getId(), OffsetDateTime.now(), "ACCOUNT_" + req.getStatus());
         audit(actorId, "ACCOUNT_STATUS_UPDATE", "accounts", target.getId(), "{\"status\":\"" + req.getStatus() + "\"}");
         return map(target);
     }

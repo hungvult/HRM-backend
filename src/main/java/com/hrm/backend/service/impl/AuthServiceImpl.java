@@ -47,8 +47,11 @@ public class AuthServiceImpl implements AuthService {
         if (rawToken == null || rawToken.isBlank()) throw invalidRefreshToken();
         AuthSession old = authSessionRepository.findByRefreshTokenHash(hash(rawToken)).orElseThrow(this::invalidRefreshToken);
         OffsetDateTime now = OffsetDateTime.now();
+        // Ưu tiên trả lỗi trạng thái account thay vì che thành refresh token invalid
+        // khi session đã bị thu hồi do account bị khóa/vô hiệu hóa.
+        assertActive(old.getAccount());
         if (old.getRevokedAt() != null || !old.getExpiresAt().isAfter(now)) throw invalidRefreshToken();
-        assertActive(old.getAccount()); old.setLastUsedAt(now); old.setRevokedAt(now); old.setRevokeReason("TOKEN_ROTATED");
+        old.setLastUsedAt(now); old.setRevokedAt(now); old.setRevokeReason("TOKEN_ROTATED");
         return issueTokens(old.getAccount(), old.getDeviceInfo(), request.getHeader("User-Agent"));
     }
     @Override
