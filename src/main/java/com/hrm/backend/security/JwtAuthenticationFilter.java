@@ -30,6 +30,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final CustomUserDetailsService customUserDetailsService;
+    private final SecurityErrorResponseWriter errorWriter;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
@@ -48,11 +49,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 // "kiểm tra Account ACTIVE" / "403 nếu tài khoản bị khóa sau khi cấp token"
                 // So loading UserDetails is safer.
                 
-                if (!userDetails.isEnabled()) {
-                    throw new AuthException("AUTH_ACCOUNT_DISABLED", "Account is disabled", HttpStatus.FORBIDDEN.value());
-                }
                 if (!userDetails.isAccountNonLocked()) {
-                    throw new AuthException("AUTH_ACCOUNT_LOCKED", "Account is locked", HttpStatus.FORBIDDEN.value());
+                    throw new AuthException("AUTH_ACCOUNT_LOCKED", "Tài khoản đã bị khóa.", HttpStatus.FORBIDDEN.value());
+                }
+                if (!userDetails.isEnabled()) {
+                    throw new AuthException("AUTH_ACCOUNT_DISABLED", "Tài khoản đã bị vô hiệu hóa.", HttpStatus.FORBIDDEN.value());
                 }
 
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
@@ -61,13 +62,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             }
+        } catch (AuthException ex) {
+            SecurityContextHolder.clearContext();
+            errorWriter.write(request, response, ex.getStatus(), ex.getCode(), ex.getMessage());
+            return;
         } catch (ExpiredJwtException ex) {
-            // we catch specific JWT exceptions to let GlobalExceptionHandler handle it if we want, 
-            // but filters run before DispatcherServlet, so we might need to handle it here or let Spring Security entry point handle it.
-            // For simplicity, we just clear context and let Spring Security return 401.
-            request.setAttribute("exception", ex);
+            SecurityContextHolder.clearContext();
+            errorWriter.write(request, response, HttpServletResponse.SC_UNAUTHORIZED,
+                    "AUTH_UNAUTHORIZED", "Access token đã hết hạn hoặc không hợp lệ.");
+            return;
         } catch (JwtException ex) {
-            request.setAttribute("exception", ex);
+            SecurityContextHolder.clearContext();
+            errorWriter.write(request, response, HttpServletResponse.SC_UNAUTHORIZED,
+                    "AUTH_UNAUTHORIZED", "Access token đã hết hạn hoặc không hợp lệ.");
+            return;
         } catch (Exception ex) {
             logger.error("Could not set user authentication in security context", ex);
         }
