@@ -20,14 +20,17 @@ import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
-@Service @RequiredArgsConstructor @Transactional
+@Service
+@RequiredArgsConstructor
+@Transactional
 public class AccountAdminServiceImpl implements AccountAdminService {
     private final AccountRepository accounts;
     private final EmployeeRepository employees;
     private final RoleRepository roles;
     private final AccountRoleRepository accountRoles;
     private final AuthSessionRepository sessions;
-    private final AuditLogRepository audits; private final PasswordEncoder encoder;
+    private final AuditLogRepository audits;
+    private final PasswordEncoder encoder;
     @Override
     public AdminAccountResponse create(Long actorId, CreateAccountRequest req) {
         String username = req.getUsername().trim();
@@ -84,8 +87,10 @@ public class AccountAdminServiceImpl implements AccountAdminService {
         Account target = account(accountId);
         Set<String> codes = normalizedRoles(req.getRoles());
         Set<String> current = roleCodes(target.getId());
-        if (actorId.equals(accountId) && !codes.contains("ADMIN")) throw conflict("CANNOT_REMOVE_OWN_ADMIN_ROLE", "Không thể tự gỡ role ADMIN.");
-        if (current.contains("ADMIN") && !codes.contains("ADMIN") && accountRoles.countByRoleCode("ADMIN") <= 1) throw conflict("LAST_ADMIN_ROLE", "Hệ thống phải còn ít nhất một ADMIN.");
+        if (actorId.equals(accountId) && !codes.contains("ADMIN"))
+            throw conflict("CANNOT_REMOVE_OWN_ADMIN_ROLE", "Không thể tự gỡ role ADMIN.");
+        if (current.contains("ADMIN") && !codes.contains("ADMIN") && accountRoles.countByRoleCode("ADMIN") <= 1)
+            throw conflict("LAST_ADMIN_ROLE", "Hệ thống phải còn ít nhất một ADMIN.");
         replaceRolesInternal(actorId, target, codes);
         sessions.revokeActiveByAccountId(target.getId(), OffsetDateTime.now(), "ROLE_CHANGED");
         audit(actorId, "ACCOUNT_ROLE_REPLACE", "accounts", target.getId(), "{\"roles\":\"" + String.join(",", codes) + "\"}");
@@ -97,7 +102,8 @@ public class AccountAdminServiceImpl implements AccountAdminService {
         if (selected.size() != codes.size()) throw conflict("ROLE_NOT_FOUND", "Có role không tồn tại.");
         accountRoles.deleteAll(accountRoles.findByAccountIdWithRole(target.getId()));
         accountRoles.flush(); Account actor = account(actorId);
-        for (Role role : selected) accountRoles.save(AccountRole.builder().id(new AccountRole.AccountRoleId(target.getId(), role.getId())).account(target).role(role).assignedByAccount(actor).build());
+        for (Role role : selected)
+            accountRoles.save(AccountRole.builder().id(new AccountRole.AccountRoleId(target.getId(), role.getId())).account(target).role(role).assignedByAccount(actor).build());
     }
     private Account account(Long id) {
         return accounts.findByIdWithEmployee(id).orElseThrow(() -> new ResourceNotFoundException("ACCOUNT_NOT_FOUND", "Không tìm thấy tài khoản."));
@@ -125,6 +131,9 @@ public class AccountAdminServiceImpl implements AccountAdminService {
                 .employeeId(e == null ? null : e.getId()).employeeCode(e == null ? null : e.getEmployeeCode()).lastLoginAt(a.getLastLoginAt()).createdAt(a.getCreatedAt()).updatedAt(a.getUpdatedAt()).build();
     }
     private void audit(Long actorId, String action, String type, Long id, String newData) {
-        audits.save(AuditLog.builder().actorAccount(account(actorId)).action(action).entityType(type).entityId(id).newData(newData).occurredAt(OffsetDateTime.now()).build()); }
-    private AuthException conflict(String code, String message) { return new AuthException(code, message, 409); }
+        audits.save(AuditLog.builder().actorAccount(account(actorId)).action(action).entityType(type).entityId(id).newData(newData).occurredAt(OffsetDateTime.now()).build());
+    }
+    private AuthException conflict(String code, String message) {
+        return new AuthException(code, message, 409);
+    }
 }
