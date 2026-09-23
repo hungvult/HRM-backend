@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - develop
+      - main
+      - master
 
 env:
   REGISTRY: ghcr.io
@@ -18,9 +20,40 @@ jobs:
       contents: read
       packages: write
 
+    outputs:
+      container_name: ${{ steps.deploy-vars.outputs.container_name }}
+      env_file: ${{ steps.deploy-vars.outputs.env_file }}
+      host_port: ${{ steps.deploy-vars.outputs.host_port }}
+      image_tag: ${{ steps.deploy-vars.outputs.image_tag }}
+      network_name: ${{ steps.deploy-vars.outputs.network_name }}
+
     steps:
       - name: Checkout source code
         uses: actions/checkout@v7
+
+      - name: Resolve deployment target
+        id: deploy-vars
+        run: |
+          case "${GITHUB_REF_NAME}" in
+            develop)
+              echo "container_name=hrm-backend" >> "$GITHUB_OUTPUT"
+              echo "env_file=/opt/hrm/test/.env" >> "$GITHUB_OUTPUT"
+              echo "host_port=8082" >> "$GITHUB_OUTPUT"
+              echo "image_tag=test" >> "$GITHUB_OUTPUT"
+              echo "network_name=hrm-network" >> "$GITHUB_OUTPUT"
+              ;;
+            main|master)
+              echo "container_name=hrm-backend-prod" >> "$GITHUB_OUTPUT"
+              echo "env_file=/opt/hrm/prod/.env" >> "$GITHUB_OUTPUT"
+              echo "host_port=18082" >> "$GITHUB_OUTPUT"
+              echo "image_tag=prod" >> "$GITHUB_OUTPUT"
+              echo "network_name=hrm-prod-network" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unsupported branch: ${GITHUB_REF_NAME}" >&2
+              exit 1
+              ;;
+          esac
 
       - name: Log in to GHCR
         uses: docker/login-action@v4
@@ -32,13 +65,13 @@ jobs:
       - name: Build Docker image
         run: |
           docker build \
-            -t ${{ env.IMAGE_NAME }}:latest \
+            -t ${{ env.IMAGE_NAME }}:${{ steps.deploy-vars.outputs.image_tag }} \
             -t ${{ env.IMAGE_NAME }}:${{ github.sha }} \
             .
 
       - name: Push Docker image
         run: |
-          docker push ${{ env.IMAGE_NAME }}:latest
+          docker push ${{ env.IMAGE_NAME }}:${{ steps.deploy-vars.outputs.image_tag }}
           docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
 
   deploy:
@@ -51,18 +84,23 @@ jobs:
         uses: appleboy/ssh-action@v1.2.5
         env:
           GHCR_PAT: ${{ secrets.GHCR_PAT }}
+          CONTAINER_NAME: ${{ needs.docker.outputs.container_name }}
+          ENV_FILE: ${{ needs.docker.outputs.env_file }}
+          HOST_PORT: ${{ needs.docker.outputs.host_port }}
+          IMAGE_TAG: ${{ needs.docker.outputs.image_tag }}
+          NETWORK_NAME: ${{ needs.docker.outputs.network_name }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
-          envs: GHCR_PAT
+          envs: GHCR_PAT,CONTAINER_NAME,ENV_FILE,HOST_PORT,IMAGE_TAG,NETWORK_NAME
           script_stop: true
           script: |
             set -e
 
             echo "========================================"
-            echo "Starting HRM Backend deployment"
+            echo "Starting HRM Backend deployment: $IMAGE_TAG"
             echo "========================================"
 
             echo "Logging in to GHCR..."
@@ -70,39 +108,42 @@ jobs:
               --username hungvult \
               --password-stdin
 
-            echo "Pulling latest backend image..."
-            docker pull ghcr.io/hungvult/hrm-backend:latest
+            echo "Pulling backend image..."
+            docker pull ghcr.io/hungvult/hrm-backend:$IMAGE_TAG
+
+            echo "Ensuring Docker network exists..."
+            docker network inspect "$NETWORK_NAME" >/dev/null 2>&1 || docker network create "$NETWORK_NAME"
 
             echo "Stopping old HRM backend container..."
-            docker stop hrm-backend 2>/dev/null || true
+            docker stop "$CONTAINER_NAME" 2>/dev/null || true
 
             echo "Removing old HRM backend container..."
-            docker rm hrm-backend 2>/dev/null || true
+            docker rm "$CONTAINER_NAME" 2>/dev/null || true
 
             echo "Starting new HRM backend container..."
             docker run -d \
-              --name hrm-backend \
+              --name "$CONTAINER_NAME" \
               --restart unless-stopped \
-              --network hrm-network \
-              -p 8082:8080 \
-              --env-file /opt/hrm/.env \
-              ghcr.io/hungvult/hrm-backend:latest
+              --network "$NETWORK_NAME" \
+              -p 127.0.0.1:$HOST_PORT:8080 \
+              --env-file "$ENV_FILE" \
+              ghcr.io/hungvult/hrm-backend:$IMAGE_TAG
 
             echo "Waiting for backend container..."
             sleep 10
 
             echo "Checking container status..."
-            docker ps --filter name=hrm-backend
+            docker ps --filter name="$CONTAINER_NAME"
 
             echo "Checking backend logs..."
-            docker logs hrm-backend --tail 30
+            docker logs "$CONTAINER_NAME" --tail 30
 
             echo "Testing backend endpoint..."
-            curl -i --max-time 10 http://localhost:8082/api || true
+            curl -i --max-time 10 http://127.0.0.1:$HOST_PORT/api || true
 
             echo "Logging out from GHCR..."
             docker logout ghcr.io || true
 
             echo "========================================"
-            echo "HRM Backend deployment completed"
+            echo "HRM Backend deployment completed: $IMAGE_TAG"
             echo "========================================"
