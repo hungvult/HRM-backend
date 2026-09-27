@@ -40,16 +40,37 @@ import org.springframework.web.bind.annotation.*;
 
 public class AdminAccountController {
     private final AccountAdminService service;
+    private final EmployeeService employeeService;
     @PostMapping
     @Operation(summary = "Tạo tài khoản", description = "Chỉ ADMIN. Có thể truyền employeeId của hồ sơ nhân viên đã tạo; một nhân viên chỉ được liên kết với một tài khoản. Mật khẩu được BCrypt-hash trước khi lưu.")
     @ApiResponses({@ApiResponse(responseCode = "201", description = "Đã tạo"),
             @ApiResponse(responseCode = "401", description = "Chưa xác thực", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "403", description = "Không phải ADMIN", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "404", description = "Không tìm thấy nhân viên", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "409", description = "Username/email đã tồn tại hoặc nhân viên đã có tài khoản", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    })
+            @ApiResponse(responseCode = "409", description = "Username/email đã tồn tại hoặc nhân viên đã có tài khoản", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))})
     public ResponseEntity<AdminAccountResponse> create(@AuthenticationPrincipal CustomUserDetails actor, @Valid @RequestBody CreateAccountRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(actor.getAccount().getId(), request));
+    }
+
+    @GetMapping
+    @Operation(summary = "Danh sách tài khoản", description = "Chỉ ADMIN. Hỗ trợ phân trang, keyword, status và role.")
+    public Page<AdminAccountResponse> list(@RequestParam(required = false) String keyword, @RequestParam(required = false) AccountStatus status, @RequestParam(required = false) String role, @PageableDefault(size = 20, sort = "id") Pageable pageable) { return service.search(keyword, status, role, pageable); }
+
+    @GetMapping("/{accountId}")
+    @Operation(summary = "Chi tiết tài khoản", description = "Trả thông tin tài khoản và hồ sơ nhân viên đầy đủ nếu account đã được liên kết.")
+    @ApiResponses({@ApiResponse(responseCode = "200", description = "Thành công"), @ApiResponse(responseCode = "404", description = "Không tìm thấy account", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))})
+    public AccountDetailResponse get(@PathVariable Long accountId, @AuthenticationPrincipal CustomUserDetails actor) {
+        AdminAccountResponse account = service.get(accountId);
+        EmployeeDto employee = account.getEmployeeId() == null ? null
+                : employeeService.getEmployee(actor.getAccount().getId(), account.getEmployeeId());
+        return AccountDetailResponse.builder()
+                .id(account.getId())
+                .username(account.getUsername())
+                .email(account.getEmail())
+                .status(account.getStatus())
+                .roles(account.getRoles())
+                .employee(employee)
+                .build();
     }
 
 }
