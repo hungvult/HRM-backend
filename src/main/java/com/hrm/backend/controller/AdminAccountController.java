@@ -6,8 +6,8 @@ import com.hrm.backend.dto.response.AccountDetailResponse;
 import com.hrm.backend.dto.response.EmployeeDto;
 import com.hrm.backend.dto.response.ErrorResponse;
 import com.hrm.backend.dto.response.ReplaceAccountRolesResponse;
-import com.hrm.backend.dto.response.UpdateAccountStatusResponse;
 import com.hrm.backend.dto.response.UpdateAccountResponse;
+import com.hrm.backend.dto.response.UpdateAccountStatusResponse;
 import com.hrm.backend.entity.enums.AccountStatus;
 import com.hrm.backend.security.CustomUserDetails;
 import com.hrm.backend.service.AccountAdminService;
@@ -50,6 +50,21 @@ public class AdminAccountController {
     })
     public ResponseEntity<AdminAccountResponse> create(@AuthenticationPrincipal CustomUserDetails actor, @Valid @RequestBody CreateAccountRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(actor.getAccount().getId(), request));
+    }
+
+    @PatchMapping("/{accountId}")
+    @Operation(summary = "Cập nhật username/email", description = "Response chỉ gồm id, username, email và status.")
+    public UpdateAccountResponse update(
+            @AuthenticationPrincipal CustomUserDetails actor,
+            @PathVariable Long accountId,
+            @Valid @RequestBody UpdateAccountRequest request) {
+        AdminAccountResponse updated = service.update(actor.getAccount().getId(), accountId, request);
+        return UpdateAccountResponse.builder()
+                .id(updated.getId())
+                .username(updated.getUsername())
+                .email(updated.getEmail())
+                .status(updated.getStatus())
+                .build();
     }
 
 }
