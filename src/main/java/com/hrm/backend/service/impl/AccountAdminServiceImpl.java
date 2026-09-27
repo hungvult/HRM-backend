@@ -70,10 +70,19 @@ public class AccountAdminServiceImpl implements AccountAdminService {
     public Page<AdminAccountResponse> search(String keyword, AccountStatus status, String role, Pageable pageable) {
         String normalizedKeyword = keyword == null || keyword.isBlank() ? "" : keyword.trim();
         String normalizedRole = role == null || role.isBlank() ? "" : role.trim().toUpperCase(Locale.ROOT);
-        return accounts.search(normalizedKeyword, status, normalizedRole, safePageable(pageable)).map(this::map);
+        return accounts.search(normalizedKeyword, status, normalizedRole, safePageable(pageable)).map(account -> accountMapper.toAdminResponse(
+                account,
+                sortedRoleCodes(account.getId())
+        ));
     }
     @Override
-    @Transactional(readOnly = true) public AdminAccountResponse get(Long accountId) { return map(account(accountId)); }
+    @Transactional(readOnly = true)
+    public AccountDetailResponse getDetail(Long accountId) {
+        Account account = account(accountId);
+        return accountMapper.toDetailResponse(account, sortedRoleCodes(account.getId()),
+                account.getEmployee() == null ? null : employeeProfileAssembler.toDetailedDto(account.getEmployee()));
+    }
+
     @Override
     public AdminAccountResponse update(Long actorId, Long accountId, UpdateAccountRequest req) {
         Account target = account(accountId);
