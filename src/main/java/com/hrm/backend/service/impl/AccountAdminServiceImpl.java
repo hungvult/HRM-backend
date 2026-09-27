@@ -6,6 +6,7 @@ import com.hrm.backend.entity.*;
 import com.hrm.backend.entity.enums.AccountStatus;
 import com.hrm.backend.exception.AuthException;
 import com.hrm.backend.exception.ResourceNotFoundException;
+import com.hrm.backend.mapper.AccountMapper;
 import com.hrm.backend.repository.*;
 import com.hrm.backend.service.AccountAdminService;
 import lombok.RequiredArgsConstructor;
@@ -31,10 +32,11 @@ public class AccountAdminServiceImpl implements AccountAdminService {
     private final AuthSessionRepository sessions;
     private final AuditLogRepository audits;
     private final PasswordEncoder encoder;
+    private final AccountMapper accountMapper;
     @Override
     public AdminAccountResponse create(Long actorId, CreateAccountRequest req) {
-        String username = req.getUsername().trim();
-        String email = req.getEmail().trim().toLowerCase(Locale.ROOT);
+        String username = accountMapper.normalizeUsername(req.getUsername());
+        String email = accountMapper.normalizeEmail(req.getEmail());
         if (accounts.existsByUsernameIgnoreCase(username)) throw conflict("USERNAME_ALREADY_EXISTS", "Tên đăng nhập đã tồn tại.");
         if (accounts.existsByEmailIgnoreCase(email)) throw conflict("EMAIL_ALREADY_EXISTS", "Email đã tồn tại.");
 
@@ -44,12 +46,24 @@ public class AccountAdminServiceImpl implements AccountAdminService {
             throw conflict("EMPLOYEE_ALREADY_HAS_ACCOUNT", "Nhân viên này đã được liên kết với một tài khoản.");
         }
 
-        Account account = accounts.save(Account.builder().username(username).email(email).passwordHash(encoder.encode(req.getPassword())).status(AccountStatus.ACTIVE).passwordChangedAt(OffsetDateTime.now()).build());
+        Account account = accountMapper.toNewEntity(req, encoder.encode(req.getPassword()));
+        account.setPasswordChangedAt(OffsetDateTime.now());
+        account = accounts.save(account);
         employee.setAccount(account);
         account.setEmployee(employee);
         employees.save(employee);
-        replaceRolesInternal(actorId, account, req.getRoles()); audit(actorId, "ACCOUNT_CREATE", "accounts", account.getId(), "{\"username\":\"" + username + "\"}");
-        return map(account);
+        replaceRolesInternal(actorId, account, req.getRoles());
+        audit(
+                actorId,
+                "ACCOUNT_CREATED",
+                "accounts",
+                account.getId(),
+                "{\"username\":\"" + account.getUsername() + "\"}"
+        );
+        return accountMapper.toAdminResponse(
+                account,
+                roleCodes(account.getId()).stream().sorted().toList()
+        );
     }
     @Override
     @Transactional(readOnly = true)
