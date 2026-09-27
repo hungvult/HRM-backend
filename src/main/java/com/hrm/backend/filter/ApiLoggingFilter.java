@@ -27,6 +27,8 @@ import java.util.Locale;
 @RequiredArgsConstructor
 public class ApiLoggingFilter extends OncePerRequestFilter {
 
+    private static final int REQUEST_CACHE_LIMIT = 10 * 1024 * 1024;
+
     private final ApiLogRepository apiLogRepository;
 
     @Override
@@ -40,7 +42,7 @@ public class ApiLoggingFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        ContentCachingRequestWrapper wrappedRequest = new ContentCachingRequestWrapper(request);
+        ContentCachingRequestWrapper wrappedRequest = new ContentCachingRequestWrapper(request, REQUEST_CACHE_LIMIT);
         ContentCachingResponseWrapper wrappedResponse = new ContentCachingResponseWrapper(response);
         long startedAt = System.currentTimeMillis();
 
