@@ -7,7 +7,6 @@ import com.hrm.backend.entity.enums.AccountStatus;
 import com.hrm.backend.exception.AuthException;
 import com.hrm.backend.exception.ResourceNotFoundException;
 import com.hrm.backend.mapper.AccountMapper;
-
 import com.hrm.backend.repository.*;
 import com.hrm.backend.service.AccountAdminService;
 import lombok.RequiredArgsConstructor;
@@ -54,8 +53,17 @@ public class AccountAdminServiceImpl implements AccountAdminService {
         account.setEmployee(employee);
         employees.save(employee);
         replaceRolesInternal(actorId, account, req.getRoles());
-        audit(actorId, "ACCOUNT_CREATED", account.getId(), null, accountSnapshot(account));
-        return toAdminResponse(account);
+        audit(
+                actorId,
+                "ACCOUNT_CREATED",
+                "accounts",
+                account.getId(),
+                "{\"username\":\"" + account.getUsername() + "\"}"
+        );
+        return accountMapper.toAdminResponse(
+                account,
+                roleCodes(account.getId()).stream().sorted().toList()
+        );
     }
     @Override
     @Transactional(readOnly = true)
