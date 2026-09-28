@@ -1,6 +1,7 @@
 package com.hrm.backend.controller;
 
 import com.hrm.backend.dto.request.CreateEmployeeRequest;
+import com.hrm.backend.dto.request.UpdateEmployeeRequest;
 import com.hrm.backend.dto.response.EmployeeDto;
 import com.hrm.backend.dto.response.ErrorResponse;
 import com.hrm.backend.security.CustomUserDetails;
@@ -36,6 +37,16 @@ public class EmployeeController {
     })
     public ResponseEntity<EmployeeDto> createEmployee(@Valid @RequestBody CreateEmployeeRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(employeeService.createEmployee(request));
+    }
+
+    @PatchMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
+    @Operation(summary = "Cập nhật một phần hồ sơ nhân viên", description = "Chỉ cập nhật các trường được gửi; không đổi mã nhân viên, trạng thái hoặc phân công.")
+    public ResponseEntity<EmployeeDto> updateEmployee(
+            @PathVariable Long id,
+            @AuthenticationPrincipal CustomUserDetails currentUser,
+            @Valid @RequestBody UpdateEmployeeRequest request) {
+        return ResponseEntity.ok(employeeService.updateEmployee(currentUser.getAccount().getId(), id, request));
     }
 
     @GetMapping("/{employeeId}")
