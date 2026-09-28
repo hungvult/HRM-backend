@@ -67,6 +67,15 @@ public class AdminAccountController {
         return service.updateStatus(actor.getAccount().getId(), accountId, request);
     }
 
+    @PutMapping("/{accountId}/roles")
+    @Operation(summary = "Thay thế vai trò tài khoản")
+    public ReplaceAccountRolesResponse replaceRoles(
+            @AuthenticationPrincipal CustomUserDetails actor,
+            @PathVariable Long accountId,
+            @Valid @RequestBody ReplaceAccountRolesRequest request) {
+        return service.replaceRoles(actor.getAccount().getId(), accountId, request);
+    }
+
     @GetMapping
     @Operation(summary = "Danh sách tài khoản", description = "Chỉ ADMIN. Hỗ trợ phân trang, keyword, status và role.")
     public Page<AdminAccountResponse> list(@RequestParam(required = false) String keyword, @RequestParam(required = false) AccountStatus status, @RequestParam(required = false) String role, @PageableDefault(size = 20, sort = "id") Pageable pageable) { return service.search(keyword, status, role, pageable); }
