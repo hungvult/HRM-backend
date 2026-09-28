@@ -55,13 +55,7 @@ public class AdminAccountController {
             @AuthenticationPrincipal CustomUserDetails actor,
             @PathVariable Long accountId,
             @Valid @RequestBody UpdateAccountRequest request) {
-        AdminAccountResponse updated = service.update(actor.getAccount().getId(), accountId, request);
-        return UpdateAccountResponse.builder()
-                .id(updated.getId())
-                .username(updated.getUsername())
-                .email(updated.getEmail())
-                .status(updated.getStatus())
-                .build();
+        return service.update(actor.getAccount().getId(), accountId, request);
     }
 
     @GetMapping
