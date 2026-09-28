@@ -3,6 +3,7 @@ package com.hrm.backend.service.impl;
 import com.hrm.backend.dto.request.*;
 import com.hrm.backend.dto.response.AccountDetailResponse;
 import com.hrm.backend.dto.response.AdminAccountResponse;
+import com.hrm.backend.dto.response.UpdateAccountStatusResponse;
 import com.hrm.backend.assembler.EmployeeProfileAssembler;
 import com.hrm.backend.dto.response.UpdateAccountResponse;
 import com.hrm.backend.entity.*;
@@ -107,7 +108,7 @@ public class AccountAdminServiceImpl implements AccountAdminService {
         return accountMapper.toUpdateResponse(target);
     }
     @Override
-    public AdminAccountResponse updateStatus(Long actorId, Long accountId, UpdateAccountStatusRequest req) {
+    public UpdateAccountStatusResponse updateStatus(Long actorId, Long accountId, UpdateAccountStatusRequest req) {
         Account target = account(accountId);
         if (actorId.equals(accountId) && req.getStatus() != AccountStatus.ACTIVE)
             throw conflict("CANNOT_CHANGE_OWN_STATUS", "Không thể khóa hoặc vô hiệu hóa tài khoản của chính mình.");
@@ -115,7 +116,7 @@ public class AccountAdminServiceImpl implements AccountAdminService {
         if (req.getStatus() != AccountStatus.ACTIVE)
             sessions.revokeActiveByAccountId(target.getId(), OffsetDateTime.now(), "ACCOUNT_" + req.getStatus());
         audit(actorId, "ACCOUNT_STATUS_UPDATE", "accounts", target.getId(), "{\"status\":\"" + req.getStatus() + "\"}");
-        return map(target);
+        return accountMapper.toStatusResponse(target);
     }
     @Override
     public AdminAccountResponse replaceRoles(Long actorId, Long accountId, ReplaceAccountRolesRequest req) {
