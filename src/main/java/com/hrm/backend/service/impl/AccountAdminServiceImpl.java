@@ -3,6 +3,7 @@ package com.hrm.backend.service.impl;
 import com.hrm.backend.dto.request.*;
 import com.hrm.backend.dto.response.AccountDetailResponse;
 import com.hrm.backend.dto.response.AdminAccountResponse;
+import com.hrm.backend.dto.response.ReplaceAccountRolesResponse;
 import com.hrm.backend.dto.response.UpdateAccountStatusResponse;
 import com.hrm.backend.assembler.EmployeeProfileAssembler;
 import com.hrm.backend.dto.response.UpdateAccountResponse;
@@ -119,7 +120,7 @@ public class AccountAdminServiceImpl implements AccountAdminService {
         return accountMapper.toStatusResponse(target);
     }
     @Override
-    public AdminAccountResponse replaceRoles(Long actorId, Long accountId, ReplaceAccountRolesRequest req) {
+    public ReplaceAccountRolesResponse replaceRoles(Long actorId, Long accountId, ReplaceAccountRolesRequest req) {
         Account target = account(accountId);
         Set<String> codes = normalizedRoles(req.getRoles());
         Set<String> current = roleCodes(target.getId());
@@ -130,7 +131,7 @@ public class AccountAdminServiceImpl implements AccountAdminService {
         replaceRolesInternal(actorId, target, codes);
         sessions.revokeActiveByAccountId(target.getId(), OffsetDateTime.now(), "ROLE_CHANGED");
         audit(actorId, "ACCOUNT_ROLE_REPLACE", "accounts", target.getId(), "{\"roles\":\"" + String.join(",", codes) + "\"}");
-        return map(target);
+        return accountMapper.toRolesResponse(target, sortedRoleCodes(target.getId()));
     }
     private void replaceRolesInternal(Long actorId, Account target, Collection<String> requested) {
         Set<String> codes = normalizedRoles(requested);
