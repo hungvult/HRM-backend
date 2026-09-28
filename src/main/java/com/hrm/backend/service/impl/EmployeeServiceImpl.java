@@ -76,10 +76,10 @@ public class EmployeeServiceImpl implements EmployeeService {
     }
     @Override public EmployeeDto getEmployee(Long accountId, Long employeeId) {
         access.requireCanReadEmployee(accountId, employeeId);
-        Employee e = employees.findById(employeeId).orElseThrow(() -> new ResourceNotFoundException("EMPLOYEE_NOT_FOUND", "Không tìm thấy nhân viên."));
-        EmployeeDto.EmployeeDtoBuilder result = EmployeeDto.builder().id(e.getId()).employeeCode(e.getEmployeeCode()).fullName(e.getFullName()).dateOfBirth(e.getDateOfBirth()).gender(e.getGender() == null ? null : e.getGender().name()).email(e.getEmail()).phone(e.getPhone()).address(e.getAddress()).hireDate(e.getHireDate()).employmentStatus(e.getEmploymentStatus() == null ? null : e.getEmploymentStatus().name());
-        assignments.findCurrentAssignmentByEmployeeId(e.getId()).ifPresent(a -> { if (a.getDepartment() != null) result.department(DepartmentDto.builder().id(a.getDepartment().getId()).code(a.getDepartment().getCode()).name(a.getDepartment().getName()).build()); if (a.getPosition() != null) result.position(PositionDto.builder().id(a.getPosition().getId()).code(a.getPosition().getCode()).name(a.getPosition().getName()).build()); if (a.getManagerEmployee() != null) result.manager(EmployeeDto.ManagerDto.builder().id(a.getManagerEmployee().getId()).employeeCode(a.getManagerEmployee().getEmployeeCode()).fullName(a.getManagerEmployee().getFullName()).build()); });
-        return result.build();
+        Employee employee = employees.findById(employeeId)
+                .orElseThrow(() -> new ResourceNotFoundException("EMPLOYEE_NOT_FOUND", "Không tìm thấy nhân viên."));
+        return employeeMapper.toDetailResponse(employee,
+                assignments.findCurrentAssignmentByEmployeeId(employee.getId()).orElse(null));
     }
     @Override
     public PagedResponse<EmployeeListItemResponse> searchEmployees(String q, EmploymentStatus employmentStatus,
