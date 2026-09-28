@@ -19,7 +19,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-@RestController @RequestMapping("/v1/employees") @RequiredArgsConstructor
+@RestController @RequestMapping("/api/v1/employees") @RequiredArgsConstructor
 @SecurityRequirement(name = "bearerAuth")
 public class EmployeeController {
     private final EmployeeService employeeService;
@@ -38,7 +38,7 @@ public class EmployeeController {
         return ResponseEntity.status(HttpStatus.CREATED).body(employeeService.createEmployee(request));
     }
 
-    @GetMapping("/{employeeId}")
+    @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'MANAGER', 'EMPLOYEE')")
     @Operation(summary = "Xem hồ sơ nhân viên", description = "ADMIN/HR xem mọi hồ sơ; MANAGER chỉ xem nhân viên trực thuộc; EMPLOYEE chỉ xem hồ sơ của chính mình.")
     @ApiResponses({
@@ -47,7 +47,7 @@ public class EmployeeController {
             @ApiResponse(responseCode = "403", description = "Không đủ quyền hoặc vượt phạm vi dữ liệu", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "404", description = "Không tìm thấy nhân viên", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
-    public ResponseEntity<EmployeeDto> getEmployee(@PathVariable Long employeeId, @AuthenticationPrincipal CustomUserDetails currentUser) {
+    public ResponseEntity<EmployeeDto> getEmployee(@PathVariable("id") Long employeeId, @AuthenticationPrincipal CustomUserDetails currentUser) {
         return ResponseEntity.ok(employeeService.getEmployee(currentUser.getAccount().getId(), employeeId));
     }
 }
