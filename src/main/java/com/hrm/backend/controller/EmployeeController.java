@@ -19,7 +19,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-@RestController @RequestMapping("/v1/employees") @RequiredArgsConstructor
+@RestController @RequestMapping("/api/v1/employees") @RequiredArgsConstructor
 @SecurityRequirement(name = "bearerAuth")
 public class EmployeeController {
     private final EmployeeService employeeService;
@@ -34,8 +34,11 @@ public class EmployeeController {
             @ApiResponse(responseCode = "403", description = "Chỉ ADMIN/HR được phép tạo", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "409", description = "Mã nhân viên hoặc email đã tồn tại", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
-    public ResponseEntity<EmployeeDto> createEmployee(@Valid @RequestBody CreateEmployeeRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(employeeService.createEmployee(request));
+    public ResponseEntity<EmployeeDto> createEmployee(
+            @AuthenticationPrincipal CustomUserDetails currentUser,
+            @Valid @RequestBody CreateEmployeeRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(employeeService.createEmployee(currentUser.getAccount().getId(), request));
     }
 
     @GetMapping("/{employeeId}")
