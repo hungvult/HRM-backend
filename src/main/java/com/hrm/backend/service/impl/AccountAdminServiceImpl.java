@@ -1,7 +1,9 @@
 package com.hrm.backend.service.impl;
 
 import com.hrm.backend.dto.request.*;
+import com.hrm.backend.dto.response.AccountDetailResponse;
 import com.hrm.backend.dto.response.AdminAccountResponse;
+import com.hrm.backend.assembler.EmployeeProfileAssembler;
 import com.hrm.backend.entity.*;
 import com.hrm.backend.entity.enums.AccountStatus;
 import com.hrm.backend.exception.AuthException;
@@ -33,6 +35,7 @@ public class AccountAdminServiceImpl implements AccountAdminService {
     private final AuditLogRepository audits;
     private final PasswordEncoder encoder;
     private final AccountMapper accountMapper;
+    private final EmployeeProfileAssembler employeeProfileAssembler;
     @Override
     public AdminAccountResponse create(Long actorId, CreateAccountRequest req) {
         String username = accountMapper.normalizeUsername(req.getUsername());
@@ -142,6 +145,9 @@ public class AccountAdminServiceImpl implements AccountAdminService {
     }
     private Set<String> roleCodes(Long accountId) {
         return accountRoles.findByAccountIdWithRole(accountId).stream().map(AccountRole::getRole).map(Role::getCode).collect(Collectors.toSet());
+    }
+    private List<String> sortedRoleCodes(Long accountId) {
+        return roleCodes(accountId).stream().sorted().toList();
     }
     private AdminAccountResponse map(Account a) {
         Employee e = a.getEmployee();
