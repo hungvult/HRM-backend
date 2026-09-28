@@ -7,7 +7,7 @@ import com.hrm.backend.dto.response.PagedResponse;
 import com.hrm.backend.entity.enums.EmploymentStatus;
 
 public interface EmployeeService {
-    EmployeeDto createEmployee(CreateEmployeeRequest request);
+    EmployeeDto createEmployee(Long actorAccountId, CreateEmployeeRequest request);
     EmployeeDto getEmployee(Long actorAccountId, Long employeeId);
     PagedResponse<EmployeeListItemResponse> searchEmployees(String q, EmploymentStatus employmentStatus,
                                                              Long departmentId, Long positionId, int page,
