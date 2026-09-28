@@ -4,6 +4,7 @@ import com.hrm.backend.dto.request.*;
 import com.hrm.backend.dto.response.AccountDetailResponse;
 import com.hrm.backend.dto.response.AdminAccountResponse;
 import com.hrm.backend.assembler.EmployeeProfileAssembler;
+import com.hrm.backend.dto.response.UpdateAccountResponse;
 import com.hrm.backend.entity.*;
 import com.hrm.backend.entity.enums.AccountStatus;
 import com.hrm.backend.exception.AuthException;
@@ -87,15 +88,23 @@ public class AccountAdminServiceImpl implements AccountAdminService {
     }
 
     @Override
-    public AdminAccountResponse update(Long actorId, Long accountId, UpdateAccountRequest req) {
+    public UpdateAccountResponse update(Long actorId, Long accountId, UpdateAccountRequest req) {
         Account target = account(accountId);
-        if (req.getUsername() != null && !req.getUsername().isBlank()) { String username = req.getUsername().trim();
-            if (!username.equalsIgnoreCase(target.getUsername()) && accounts.existsByUsernameIgnoreCase(username)) throw conflict("USERNAME_ALREADY_EXISTS", "Tên đăng nhập đã tồn tại."); target.setUsername(username); }
+        if (req.getUsername() != null && !req.getUsername().isBlank()) {
+            String username = accountMapper.normalizeUsername(req.getUsername());
+            if (!username.equalsIgnoreCase(target.getUsername()) && accounts.existsByUsernameIgnoreCase(username)) {
+                throw conflict("USERNAME_ALREADY_EXISTS", "Tên đăng nhập đã tồn tại.");
+            }
+        }
         if (req.getEmail() != null && !req.getEmail().isBlank()) {
-            String email = req.getEmail().trim().toLowerCase(Locale.ROOT);
-            if (!email.equalsIgnoreCase(target.getEmail()) && accounts.existsByEmailIgnoreCase(email)) throw conflict("EMAIL_ALREADY_EXISTS", "Email đã tồn tại."); target.setEmail(email); }
+            String email = accountMapper.normalizeEmail(req.getEmail());
+            if (!email.equalsIgnoreCase(target.getEmail()) && accounts.existsByEmailIgnoreCase(email)) {
+                throw conflict("EMAIL_ALREADY_EXISTS", "Email đã tồn tại.");
+            }
+        }
+        accountMapper.updateEntity(req, target);
         audit(actorId, "ACCOUNT_UPDATE", "accounts", target.getId(), "{\"username\":\"" + target.getUsername() + "\"}");
-        return map(target);
+        return accountMapper.toUpdateResponse(target);
     }
     @Override
     public AdminAccountResponse updateStatus(Long actorId, Long accountId, UpdateAccountStatusRequest req) {
