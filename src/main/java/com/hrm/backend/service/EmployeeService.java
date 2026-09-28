@@ -4,6 +4,6 @@ import com.hrm.backend.dto.request.CreateEmployeeRequest;
 import com.hrm.backend.dto.response.EmployeeDto;
 
 public interface EmployeeService {
-    EmployeeDto createEmployee(CreateEmployeeRequest request);
+    EmployeeDto createEmployee(Long actorAccountId, CreateEmployeeRequest request);
     EmployeeDto getEmployee(Long actorAccountId, Long employeeId);
 }

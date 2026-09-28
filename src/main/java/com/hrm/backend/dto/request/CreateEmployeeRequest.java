@@ -1,7 +1,6 @@
 package com.hrm.backend.dto.request;
 
 import com.hrm.backend.entity.enums.EmployeeGender;
-import com.hrm.backend.entity.enums.EmploymentStatus;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -33,5 +32,4 @@ public class CreateEmployeeRequest {
     @NotNull
     private LocalDate hireDate;
 
-    private EmploymentStatus employmentStatus = EmploymentStatus.WORKING;
 }
