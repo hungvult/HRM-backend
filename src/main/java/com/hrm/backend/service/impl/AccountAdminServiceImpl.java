@@ -1,7 +1,9 @@
 package com.hrm.backend.service.impl;
 
 import com.hrm.backend.dto.request.*;
+import com.hrm.backend.dto.response.AccountDetailResponse;
 import com.hrm.backend.dto.response.AdminAccountResponse;
+import com.hrm.backend.assembler.EmployeeProfileAssembler;
 import com.hrm.backend.entity.*;
 import com.hrm.backend.entity.enums.AccountStatus;
 import com.hrm.backend.exception.AuthException;
@@ -33,6 +35,7 @@ public class AccountAdminServiceImpl implements AccountAdminService {
     private final AuditLogRepository audits;
     private final PasswordEncoder encoder;
     private final AccountMapper accountMapper;
+    private final EmployeeProfileAssembler employeeProfileAssembler;
     @Override
     public AdminAccountResponse create(Long actorId, CreateAccountRequest req) {
         String username = accountMapper.normalizeUsername(req.getUsername());
@@ -70,10 +73,19 @@ public class AccountAdminServiceImpl implements AccountAdminService {
     public Page<AdminAccountResponse> search(String keyword, AccountStatus status, String role, Pageable pageable) {
         String normalizedKeyword = keyword == null || keyword.isBlank() ? "" : keyword.trim();
         String normalizedRole = role == null || role.isBlank() ? "" : role.trim().toUpperCase(Locale.ROOT);
-        return accounts.search(normalizedKeyword, status, normalizedRole, safePageable(pageable)).map(this::map);
+        return accounts.search(normalizedKeyword, status, normalizedRole, safePageable(pageable)).map(account -> accountMapper.toAdminResponse(
+                account,
+                sortedRoleCodes(account.getId())
+        ));
     }
     @Override
-    @Transactional(readOnly = true) public AdminAccountResponse get(Long accountId) { return map(account(accountId)); }
+    @Transactional(readOnly = true)
+    public AccountDetailResponse getDetail(Long accountId) {
+        Account account = account(accountId);
+        return accountMapper.toDetailResponse(account, sortedRoleCodes(account.getId()),
+                account.getEmployee() == null ? null : employeeProfileAssembler.toDetailedDto(account.getEmployee()));
+    }
+
     @Override
     public AdminAccountResponse update(Long actorId, Long accountId, UpdateAccountRequest req) {
         Account target = account(accountId);
@@ -133,6 +145,9 @@ public class AccountAdminServiceImpl implements AccountAdminService {
     }
     private Set<String> roleCodes(Long accountId) {
         return accountRoles.findByAccountIdWithRole(accountId).stream().map(AccountRole::getRole).map(Role::getCode).collect(Collectors.toSet());
+    }
+    private List<String> sortedRoleCodes(Long accountId) {
+        return roleCodes(accountId).stream().sorted().toList();
     }
     private AdminAccountResponse map(Account a) {
         Employee e = a.getEmployee();
