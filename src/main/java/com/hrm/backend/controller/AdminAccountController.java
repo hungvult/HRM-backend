@@ -3,7 +3,6 @@ package com.hrm.backend.controller;
 import com.hrm.backend.dto.request.*;
 import com.hrm.backend.dto.response.AdminAccountResponse;
 import com.hrm.backend.dto.response.AccountDetailResponse;
-import com.hrm.backend.dto.response.EmployeeDto;
 import com.hrm.backend.dto.response.ErrorResponse;
 import com.hrm.backend.dto.response.ReplaceAccountRolesResponse;
 import com.hrm.backend.dto.response.UpdateAccountResponse;
@@ -11,7 +10,6 @@ import com.hrm.backend.dto.response.UpdateAccountStatusResponse;
 import com.hrm.backend.entity.enums.AccountStatus;
 import com.hrm.backend.security.CustomUserDetails;
 import com.hrm.backend.service.AccountAdminService;
-import com.hrm.backend.service.EmployeeService;
 import jakarta.validation.Valid;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -40,7 +38,6 @@ import org.springframework.web.bind.annotation.*;
 
 public class AdminAccountController {
     private final AccountAdminService service;
-    private final EmployeeService employeeService;
     @PostMapping
     @Operation(summary = "Tạo tài khoản", description = "Chỉ ADMIN. Có thể truyền employeeId của hồ sơ nhân viên đã tạo; một nhân viên chỉ được liên kết với một tài khoản. Mật khẩu được BCrypt-hash trước khi lưu.")
     @ApiResponses({@ApiResponse(responseCode = "201", description = "Đã tạo"),
@@ -68,18 +65,8 @@ public class AdminAccountController {
     @GetMapping("/{accountId}")
     @Operation(summary = "Chi tiết tài khoản", description = "Trả thông tin tài khoản và hồ sơ nhân viên đầy đủ nếu account đã được liên kết.")
     @ApiResponses({@ApiResponse(responseCode = "200", description = "Thành công"), @ApiResponse(responseCode = "404", description = "Không tìm thấy account", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))})
-    public AccountDetailResponse get(@PathVariable Long accountId, @AuthenticationPrincipal CustomUserDetails actor) {
-        AdminAccountResponse account = service.get(accountId);
-        EmployeeDto employee = account.getEmployeeId() == null ? null
-                : employeeService.getEmployee(actor.getAccount().getId(), account.getEmployeeId());
-        return AccountDetailResponse.builder()
-                .id(account.getId())
-                .username(account.getUsername())
-                .email(account.getEmail())
-                .status(account.getStatus())
-                .roles(account.getRoles())
-                .employee(employee)
-                .build();
+    public AccountDetailResponse get(@PathVariable Long accountId) {
+        return service.getDetail(accountId);
     }
 
 }
