@@ -3,6 +3,7 @@ package com.hrm.backend.service;
 import com.hrm.backend.dto.request.*;
 import com.hrm.backend.dto.response.AccountDetailResponse;
 import com.hrm.backend.dto.response.AdminAccountResponse;
+import com.hrm.backend.dto.response.ReplaceAccountRolesResponse;
 import com.hrm.backend.dto.response.UpdateAccountResponse;
 import com.hrm.backend.dto.response.UpdateAccountStatusResponse;
 import com.hrm.backend.entity.enums.AccountStatus;
@@ -15,5 +16,5 @@ public interface AccountAdminService {
     AccountDetailResponse getDetail(Long accountId);
     UpdateAccountResponse update(Long actorId, Long accountId, UpdateAccountRequest request);
     UpdateAccountStatusResponse updateStatus(Long actorId, Long accountId, UpdateAccountStatusRequest request);
-    AdminAccountResponse replaceRoles(Long actorId, Long accountId, ReplaceAccountRolesRequest request);
+    ReplaceAccountRolesResponse replaceRoles(Long actorId, Long accountId, ReplaceAccountRolesRequest request);
 }
