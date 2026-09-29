@@ -1,6 +1,5 @@
 package com.hrm.backend.controller;
 
-import com.hrm.backend.dto.request.UpdateMyProfileRequest;
 import com.hrm.backend.dto.response.CurrentUserResponse;
 import com.hrm.backend.security.CustomUserDetails;
 import com.hrm.backend.service.UserService;
