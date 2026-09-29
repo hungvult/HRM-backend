@@ -16,6 +16,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * Personal-profile endpoints. The profile is always resolved from the
+ * authenticated account, never from an identifier supplied by the client.
+ */
 @RestController
 @RequestMapping("/v1/me")
 @RequiredArgsConstructor
@@ -32,4 +36,13 @@ public class ProfileController {
         return ResponseEntity.ok(
                 userService.updateCurrentUserProfile(userDetails.getAccount().getId(), request));
     }
+    @GetMapping("/profile")
+    @Operation(summary = "Xem thông tin cá nhân")
+    @SecurityRequirement(name = "bearerAuth")
+    public ResponseEntity<CurrentUserResponse> getMyProfile(
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        CurrentUserResponse profile = userService.getCurrentUserProfile(userDetails.getAccount().getId());
+        return ResponseEntity.ok(profile);
+    }
+
 }
