@@ -8,6 +8,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -61,6 +62,19 @@ public class ApiExceptionHandler {
                 .path(request.getRequestURI())
                 .traceId(getTraceId(request))
                 .errors(errors)
+                .build();
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleMalformedJson(HttpMessageNotReadableException ex, HttpServletRequest request) {
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .timestamp(OffsetDateTime.now(ZoneOffset.UTC).toString())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .code("INVALID_REQUEST_BODY")
+                .message("Request body không hợp lệ hoặc chứa trường không được hỗ trợ.")
+                .path(request.getRequestURI())
+                .traceId(getTraceId(request))
                 .build();
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
     }

@@ -1,7 +1,9 @@
 package com.hrm.backend.service.impl;
 
 import com.hrm.backend.dto.response.*;
+import com.hrm.backend.dto.request.UpdateMyProfileRequest;
 import com.hrm.backend.entity.*;
+import com.hrm.backend.exception.ResourceNotFoundException;
 import com.hrm.backend.repository.*;
 import com.hrm.backend.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +32,22 @@ public class UserServiceImpl implements UserService {
                 .email(a.getEmail())
                 .roles(roles)
                 .employee(a.getEmployee() == null ? null : map(a.getEmployee())).build();
+    }
+
+    @Override
+    @Transactional
+    public CurrentUserResponse updateCurrentUserProfile(Long accountId, UpdateMyProfileRequest request) {
+        Account account = accountRepository.findByIdWithEmployee(accountId)
+                .orElseThrow(() -> new ResourceNotFoundException("ACCOUNT_NOT_FOUND", "Không tìm thấy tài khoản."));
+        Employee employee = account.getEmployee();
+        if (employee == null) {
+            throw new ResourceNotFoundException("PROFILE_NOT_FOUND", "Không tìm thấy hồ sơ nhân viên liên kết với tài khoản." );
+        }
+
+        employee.setPhone(request.getPhone().trim());
+        employee.setAddress(request.getAddress().trim());
+
+        return getCurrentUserProfile(accountId);
     }
     private EmployeeDto map(Employee e) {
         EmployeeDto.EmployeeDtoBuilder out = EmployeeDto.builder()
