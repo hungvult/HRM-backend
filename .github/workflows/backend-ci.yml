@@ -1,0 +1,72 @@
+name: Backend CI
+
+on:
+  push:
+    branches:
+      - "feature/**"
+      - "fix/**"
+      - develop
+      - staging
+      - main
+
+  pull_request:
+    branches:
+      - develop
+      - staging
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+
+        env:
+          POSTGRES_DB: hrm
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+
+        ports:
+          - 5432:5432
+
+        options: >-
+          --health-cmd="pg_isready -U postgres -d hrm"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Verify Java and Maven
+        run: |
+          java -version
+          ./mvnw -version
+
+      - name: Run tests
+        env:
+          DB_URL: jdbc:postgresql://localhost:5432/hrm
+          DB_USERNAME: postgres
+          DB_PASSWORD: postgres
+          JWT_SECRET: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+          SPRING_PROFILES_ACTIVE: test
+        run: ./mvnw clean test
+
+      - name: Build application
+        env:
+          DB_URL: jdbc:postgresql://localhost:5432/hrm
+          DB_USERNAME: postgres
+          DB_PASSWORD: postgres
+          JWT_SECRET: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+          SPRING_PROFILES_ACTIVE: test
+        run: ./mvnw clean package -DskipTests
