@@ -1,8 +1,10 @@
 package com.hrm.backend.controller;
 
 import com.hrm.backend.dto.request.CreateEmployeeRequest;
+import com.hrm.backend.dto.request.UpdateEmployeeStatusRequest;
 import com.hrm.backend.dto.response.EmployeeDto;
 import com.hrm.backend.dto.response.EmployeeListItemResponse;
+import com.hrm.backend.dto.response.UpdateEmployeeStatusResponse;
 import com.hrm.backend.dto.response.ErrorResponse;
 import com.hrm.backend.dto.response.PagedResponse;
 import com.hrm.backend.entity.enums.EmploymentStatus;
@@ -58,6 +60,17 @@ public class EmployeeController {
             @RequestParam(defaultValue = "asc") String sortDirection) {
         return ResponseEntity.ok(employeeService.searchEmployees(q, employmentStatus, departmentId, positionId,
                 page, size, sortBy, sortDirection));
+    }
+
+    @PatchMapping("/{id}/status")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
+    @Operation(summary = "Thay đổi trạng thái nhân viên")
+    public ResponseEntity<UpdateEmployeeStatusResponse> updateEmployeeStatus(
+            @PathVariable Long id,
+            @AuthenticationPrincipal CustomUserDetails currentUser,
+            @Valid @RequestBody UpdateEmployeeStatusRequest request) {
+        return ResponseEntity.ok(employeeService.updateEmployeeStatus(
+                currentUser.getAccount().getId(), id, request));
     }
 
     @GetMapping("/{id}")
