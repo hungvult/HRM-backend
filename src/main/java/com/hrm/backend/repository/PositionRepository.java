@@ -20,5 +20,7 @@ public interface PositionRepository extends JpaRepository<Position, Long> {
                 OR LOWER(p.name) LIKE LOWER(CONCAT('%', :q, '%')))
               AND (:status IS NULL OR p.status = :status)
             """)
-    Page<Position> searchPositions(@Param("q") String q, @Param("status") PositionStatus status, Pageable pageable);
+    Page<Position> searchPositions(@Param("q") String q,
+                                   @Param("status") PositionStatus status,
+                                   Pageable pageable);
 }

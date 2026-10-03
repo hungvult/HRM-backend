@@ -20,5 +20,7 @@ public interface DepartmentRepository extends JpaRepository<Department, Long> {
                 OR LOWER(d.name) LIKE LOWER(CONCAT('%', :q, '%')))
               AND (:status IS NULL OR d.status = :status)
             """)
-    Page<Department> searchDepartments(@Param("q") String q, @Param("status") DepartmentStatus status, Pageable pageable);
+    Page<Department> searchDepartments(@Param("q") String q,
+                                       @Param("status") DepartmentStatus status,
+                                       Pageable pageable);
 }

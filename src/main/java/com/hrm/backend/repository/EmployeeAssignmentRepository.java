@@ -18,6 +18,10 @@ public interface EmployeeAssignmentRepository extends JpaRepository<EmployeeAssi
 
     boolean existsByEmployeeIdAndManagerEmployeeIdAndIsCurrentTrue(Long employeeId, Long managerEmployeeId);
 
+    boolean existsByDepartmentIdAndIsCurrentTrue(Long departmentId);
+
+    boolean existsByPositionIdAndIsCurrentTrue(Long positionId);
+
     @Query("SELECT ea FROM EmployeeAssignment ea " +
            "LEFT JOIN FETCH ea.department " +
            "LEFT JOIN FETCH ea.position " +
