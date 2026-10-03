@@ -9,8 +9,10 @@ import com.hrm.backend.entity.enums.PositionStatus;
 
 public interface PositionService {
     PositionResponse createPosition(Long actorAccountId, CreatePositionRequest request);
-    PagedResponse<PositionResponse> searchPositions(String q, PositionStatus status, int page, int size,
+    PagedResponse<PositionResponse> searchPositions(String q, PositionStatus status, Integer rankLevel, int page, int size,
                                                      String sortBy, String sortDirection);
     PositionResponse updatePosition(Long actorAccountId, Long positionId, UpdatePositionRequest request);
     PositionResponse updatePositionStatus(Long actorAccountId, Long positionId, UpdatePositionStatusRequest request);
+
+    PositionResponse getPosition(Long positionId);
 }

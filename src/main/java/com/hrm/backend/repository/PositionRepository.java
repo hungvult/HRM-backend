@@ -19,8 +19,10 @@ public interface PositionRepository extends JpaRepository<Position, Long> {
             WHERE (:q = '' OR LOWER(p.code) LIKE LOWER(CONCAT('%', :q, '%'))
                 OR LOWER(p.name) LIKE LOWER(CONCAT('%', :q, '%')))
               AND (:status IS NULL OR p.status = :status)
+              AND (:rankLevel IS NULL OR p.rankLevel = :rankLevel)
             """)
     Page<Position> searchPositions(@Param("q") String q,
                                    @Param("status") PositionStatus status,
+                                   @Param("rankLevel") Integer rankLevel,
                                    Pageable pageable);
 }

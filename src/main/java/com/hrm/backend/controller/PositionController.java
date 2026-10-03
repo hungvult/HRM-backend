@@ -32,7 +32,7 @@ public class PositionController {
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
-    @Operation(summary = "Tạo chức vụ", description = "Chỉ ADMIN/HR. Hệ thống tự sinh mã theo dạng CV + ID sáu chữ số.")
+    @Operation(summary = "Tạo chức vụ", description = "Chỉ ADMIN/HR. Hệ thống tự sinh mã theo dạng CV + ID sáu chữ số và yêu cầu cấp bậc từ 1 đến 10.")
     @ApiResponses({@ApiResponse(responseCode = "201", description = "Đã tạo chức vụ"),
             @ApiResponse(responseCode = "400", description = "Dữ liệu không hợp lệ", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "403", description = "Chỉ ADMIN/HR được phép tạo", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
@@ -49,8 +49,9 @@ public class PositionController {
     public ResponseEntity<PagedResponse<PositionResponse>> searchPositions(
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String q, @RequestParam(required = false) PositionStatus status,
+            @RequestParam(required = false) Integer rankLevel,
             @RequestParam(defaultValue = "name") String sortBy, @RequestParam(defaultValue = "asc") String sortDirection) {
-        return ResponseEntity.ok(positionService.searchPositions(q, status, page, size, sortBy, sortDirection));
+        return ResponseEntity.ok(positionService.searchPositions(q, status, rankLevel, page, size, sortBy, sortDirection));
     }
 
     @PutMapping("/{id}")
@@ -69,5 +70,19 @@ public class PositionController {
                                                                   @AuthenticationPrincipal CustomUserDetails currentUser,
                                                                   @Valid @RequestBody UpdatePositionStatusRequest request) {
         return ResponseEntity.ok(positionService.updatePositionStatus(currentUser.getAccount().getId(), id, request));
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
+    @Operation(summary = "Xem chi tiết chức vụ", description = "Chỉ ADMIN/HR. Trả thông tin chức vụ theo ID.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lấy thông tin chức vụ thành công"),
+            @ApiResponse(responseCode = "400", description = "ID chức vụ không hợp lệ", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Thiếu hoặc sai access token", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Chỉ ADMIN/HR được phép xem", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Không tìm thấy chức vụ", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<PositionResponse> getPosition(@PathVariable Long id) {
+        return ResponseEntity.ok(positionService.getPosition(id));
     }
 }

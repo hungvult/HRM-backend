@@ -14,6 +14,8 @@ public interface DepartmentService {
 
     DepartmentResponse updateDepartmentStatus(Long actorAccountId, Long departmentId, UpdateDepartmentStatusRequest request);
 
+    DepartmentResponse getDepartment(Long departmentId);
+
     PagedResponse<DepartmentResponse> searchDepartments(String q, DepartmentStatus status, int page, int size,
                                                          String sortBy, String sortDirection);
 }

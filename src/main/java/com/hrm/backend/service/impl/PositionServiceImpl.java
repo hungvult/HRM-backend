@@ -48,6 +48,7 @@ public class PositionServiceImpl implements PositionService {
                 .code(temporaryCode())
                 .name(name)
                 .description(normalizeDescription(request.getDescription()))
+                .rankLevel(request.getRankLevel())
                 .status(PositionStatus.ACTIVE)
                 .build());
         position.setCode(generateCode(position.getId()));
@@ -58,12 +59,15 @@ public class PositionServiceImpl implements PositionService {
     }
 
     @Override
-    public PagedResponse<PositionResponse> searchPositions(String q, PositionStatus status, int page, int size,
+    public PagedResponse<PositionResponse> searchPositions(String q, PositionStatus status, Integer rankLevel, int page, int size,
                                                             String sortBy, String sortDirection) {
         if (page < 0 || size < 1 || size > 100) {
             throw new AuthException("VALIDATION_ERROR", "page phải từ 0 và size phải trong khoảng 1 đến 100.", 400);
         }
-        if (!Set.of("code", "name", "createdAt", "updatedAt").contains(sortBy)) {
+        if (rankLevel != null && (rankLevel < 1 || rankLevel > 10)) {
+            throw new AuthException("VALIDATION_ERROR", "rankLevel phải trong khoảng 1 đến 10.", 400);
+        }
+        if (!Set.of("code", "name", "rankLevel", "createdAt", "updatedAt").contains(sortBy)) {
             throw new AuthException("VALIDATION_ERROR", "sortBy không hợp lệ.", 400);
         }
         Sort.Direction direction;
@@ -72,7 +76,7 @@ public class PositionServiceImpl implements PositionService {
         } catch (IllegalArgumentException exception) {
             throw new AuthException("VALIDATION_ERROR", "sortDirection chỉ nhận asc hoặc desc.", 400);
         }
-        Page<Position> positionsPage = positions.searchPositions(q == null ? "" : q.trim(), status,
+        Page<Position> positionsPage = positions.searchPositions(q == null ? "" : q.trim(), status, rankLevel,
                 PageRequest.of(page, size, Sort.by(direction, sortBy)));
         return PagedResponse.<PositionResponse>builder()
                 .content(positionsPage.getContent().stream().map(this::toResponse).toList())
@@ -93,6 +97,7 @@ public class PositionServiceImpl implements PositionService {
         String oldData = positionAuditData(position);
         position.setName(name);
         position.setDescription(normalizeDescription(request.getDescription()));
+        position.setRankLevel(request.getRankLevel());
         position = positions.saveAndFlush(position);
         audits.save(AuditLog.builder().actorAccount(actor(actorAccountId)).action("POSITION_UPDATED")
                 .entityType("POSITION").entityId(position.getId()).oldData(oldData)
@@ -121,6 +126,14 @@ public class PositionServiceImpl implements PositionService {
         return toResponse(position);
     }
 
+    @Override
+    public PositionResponse getPosition(Long positionId) {
+        if (positionId == null || positionId < 1) {
+            throw new AuthException("VALIDATION_ERROR", "ID chức vụ không hợp lệ.", 400);
+        }
+        return toResponse(findPosition(positionId));
+    }
+
     private Position findPosition(Long positionId) {
         return positions.findById(positionId)
                 .orElseThrow(() -> new ResourceNotFoundException("POSITION_NOT_FOUND", "Không tìm thấy chức vụ."));
@@ -133,7 +146,7 @@ public class PositionServiceImpl implements PositionService {
 
     private PositionResponse toResponse(Position position) {
         return PositionResponse.builder().id(position.getId()).code(position.getCode()).name(position.getName())
-                .description(position.getDescription()).status(position.getStatus().name())
+                .description(position.getDescription()).rankLevel(position.getRankLevel()).status(position.getStatus().name())
                 .createdAt(position.getCreatedAt()).updatedAt(position.getUpdatedAt()).build();
     }
 
@@ -155,9 +168,9 @@ public class PositionServiceImpl implements PositionService {
 
     private String positionAuditData(Position position) {
         return String.format(Locale.ROOT,
-                "{\"code\":\"%s\",\"name\":\"%s\",\"description\":%s,\"status\":\"%s\"}",
+                "{\"code\":\"%s\",\"name\":\"%s\",\"description\":%s,\"rankLevel\":%d,\"status\":\"%s\"}",
                 escapeJson(position.getCode()), escapeJson(position.getName()), jsonStringOrNull(position.getDescription()),
-                position.getStatus().name());
+                position.getRankLevel(), position.getStatus().name());
     }
 
     private String statusAuditData(PositionStatus status, String reason) {

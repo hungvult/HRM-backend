@@ -29,6 +29,9 @@ public class Position {
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
+    @Column(name = "rank_level", nullable = false)
+    private Integer rankLevel = 1;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private PositionStatus status = PositionStatus.ACTIVE;

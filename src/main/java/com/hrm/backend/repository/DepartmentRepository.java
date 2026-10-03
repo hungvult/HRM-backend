@@ -11,6 +11,8 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface DepartmentRepository extends JpaRepository<Department, Long> {
+    boolean existsByCodeIgnoreCase(String code);
+
     boolean existsByNameIgnoreCaseAndStatus(String name, DepartmentStatus status);
     boolean existsByNameIgnoreCaseAndStatusAndIdNot(String name, DepartmentStatus status, Long id);
 

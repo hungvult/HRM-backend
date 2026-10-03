@@ -25,7 +25,6 @@ import org.springframework.data.domain.Sort;
 
 import java.util.Locale;
 import java.util.Set;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -39,8 +38,12 @@ public class DepartmentServiceImpl implements DepartmentService {
     @Override
     @Transactional
     public DepartmentResponse createDepartment(Long actorAccountId, CreateDepartmentRequest request) {
+        String code = request.getCode().trim().toUpperCase(Locale.ROOT);
         String name = request.getName().trim();
 
+        if (departments.existsByCodeIgnoreCase(code)) {
+            throw conflict("DEPARTMENT_CODE_ALREADY_EXISTS", "Mã phòng ban đã tồn tại.");
+        }
         if (departments.existsByNameIgnoreCaseAndStatus(name, DepartmentStatus.ACTIVE)) {
             throw conflict("DEPARTMENT_NAME_ALREADY_EXISTS", "Tên phòng ban đang được sử dụng.");
         }
@@ -48,14 +51,12 @@ public class DepartmentServiceImpl implements DepartmentService {
         Account actor = accounts.findById(actorAccountId)
                 .orElseThrow(() -> new ResourceNotFoundException("ACCOUNT_NOT_FOUND", "Không tìm thấy tài khoản thực hiện."));
 
-        Department department = departments.saveAndFlush(Department.builder()
-                .code(temporaryCode())
+        Department department = departments.save(Department.builder()
+                .code(code)
                 .name(name)
                 .description(normalizeDescription(request.getDescription()))
                 .status(DepartmentStatus.ACTIVE)
                 .build());
-        department.setCode(generateCode(department.getId()));
-        department = departments.save(department);
 
         audits.save(AuditLog.builder()
                 .actorAccount(actor)
@@ -134,6 +135,16 @@ public class DepartmentServiceImpl implements DepartmentService {
     }
 
     @Override
+    public DepartmentResponse getDepartment(Long departmentId) {
+        if (departmentId == null || departmentId < 1) {
+            throw new AuthException("VALIDATION_ERROR", "ID phòng ban không hợp lệ.", 400);
+        }
+        Department department = departments.findById(departmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("DEPARTMENT_NOT_FOUND", "Không tìm thấy phòng ban."));
+        return toResponse(department);
+    }
+
+    @Override
     public PagedResponse<DepartmentResponse> searchDepartments(String q, DepartmentStatus status, int page, int size,
                                                                 String sortBy, String sortDirection) {
         if (page < 0 || size < 1 || size > 100) {
@@ -162,15 +173,6 @@ public class DepartmentServiceImpl implements DepartmentService {
                 .totalPages(departmentsPage.getTotalPages())
                 .hasNext(departmentsPage.hasNext())
                 .build();
-    }
-
-    private String temporaryCode() {
-        return "TMP" + UUID.randomUUID().toString().replace("-", "")
-                .substring(0, 24).toUpperCase(Locale.ROOT);
-    }
-
-    private String generateCode(Long departmentId) {
-        return String.format(Locale.ROOT, "PB%06d", departmentId);
     }
 
     private String normalizeDescription(String description) {
