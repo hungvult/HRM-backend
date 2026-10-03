@@ -2,6 +2,7 @@ package com.hrm.backend.service.impl;
 
 import com.hrm.backend.dto.response.*;
 import com.hrm.backend.dto.request.CreateEmployeeRequest;
+import com.hrm.backend.dto.request.UpdateEmployeeRequest;
 import com.hrm.backend.dto.request.UpdateEmployeeStatusRequest;
 import com.hrm.backend.entity.Account;
 import com.hrm.backend.entity.AuditLog;
@@ -118,6 +119,48 @@ public class EmployeeServiceImpl implements EmployeeService {
     }
     @Override
     @Transactional
+    public EmployeeDto updateEmployee(Long actorAccountId, Long employeeId, UpdateEmployeeRequest request) {
+        if (!request.hasChanges()) {
+            throw new AuthException("VALIDATION_ERROR", "Cần gửi ít nhất một trường để cập nhật.", 400);
+        }
+        Employee employee = employees.findById(employeeId)
+                .orElseThrow(() -> new ResourceNotFoundException("EMPLOYEE_NOT_FOUND", "Không tìm thấy nhân viên."));
+        validateTextFields(request);
+        if (request.getEmail() != null) {
+            String email = employeeMapper.normalizeEmail(request.getEmail());
+            if (employees.existsByEmailIgnoreCaseAndIdNot(email, employeeId)) {
+                throw conflict("EMPLOYEE_EMAIL_ALREADY_EXISTS", "Email nhân viên đã tồn tại.");
+            }
+        }
+        boolean newBirthDateAfterExistingHireDate = request.getDateOfBirth() != null
+                && employee.getHireDate().isBefore(request.getDateOfBirth());
+        boolean newHireDateBeforeExistingBirthDate = request.getHireDate() != null
+                && employee.getDateOfBirth() != null
+                && request.getHireDate().isBefore(employee.getDateOfBirth());
+        if (newBirthDateAfterExistingHireDate || newHireDateBeforeExistingBirthDate) {
+            throw new AuthException("EMPLOYEE_HIRE_DATE_INVALID", "Ngày vào làm phải sau ngày sinh.", 400);
+        }
+        String oldData = auditData(employee);
+        employeeMapper.updateEntity(request, employee);
+        if (employee.getDateOfBirth() != null && employee.getHireDate().isBefore(employee.getDateOfBirth())) {
+            throw new AuthException("EMPLOYEE_HIRE_DATE_INVALID", "Ngày vào làm phải sau ngày sinh.", 400);
+        }
+        Account actor = accounts.findById(actorAccountId)
+                .orElseThrow(() -> new ResourceNotFoundException("ACCOUNT_NOT_FOUND", "Không tìm thấy tài khoản thực hiện."));
+        Employee updatedEmployee = employees.save(employee);
+        audits.save(AuditLog.builder()
+                .actorAccount(actor)
+                .action("EMPLOYEE_UPDATED")
+                .entityType("EMPLOYEE")
+                .entityId(updatedEmployee.getId())
+                .oldData(oldData)
+                .newData(auditData(updatedEmployee))
+                .occurredAt(OffsetDateTime.now())
+                .build());
+        return employeeMapper.toDto(updatedEmployee);
+    }
+    @Override
+    @Transactional
     public UpdateEmployeeStatusResponse updateEmployeeStatus(Long actorAccountId, Long employeeId,
                                                               UpdateEmployeeStatusRequest request) {
         Employee employee = employees.findById(employeeId)
@@ -160,6 +203,18 @@ public class EmployeeServiceImpl implements EmployeeService {
     }
     private String generateEmployeeCode(Long employeeId) {
         return String.format(Locale.ROOT, "NV%06d", employeeId);
+    }
+    private void validateTextFields(UpdateEmployeeRequest request) {
+        if (request.getFullName() != null && request.getFullName().isBlank()
+                || request.getPhone() != null && request.getPhone().isBlank()) {
+            throw new AuthException("VALIDATION_ERROR", "Họ tên và số điện thoại không được để trống.", 400);
+        }
+    }
+    private String auditData(Employee employee) {
+        return String.format(Locale.ROOT,
+                "{\"fullName\":\"%s\",\"email\":\"%s\",\"phone\":\"%s\",\"hireDate\":\"%s\"}",
+                escapeJson(employee.getFullName()), escapeJson(employee.getEmail()),
+                escapeJson(employee.getPhone()), employee.getHireDate());
     }
     private String statusAuditData(EmploymentStatus status, String reason) {
         String reasonValue = reason == null ? "null" : "\"" + escapeJson(reason) + "\"";

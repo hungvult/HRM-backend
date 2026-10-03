@@ -19,6 +19,7 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
     Optional<Employee> findByIdForUpdate(@Param("employeeId") Long employeeId);
     Optional<Employee> findByAccountId(Long accountId);
     boolean existsByEmailIgnoreCase(String email);
+    boolean existsByEmailIgnoreCaseAndIdNot(String email, Long id);
 
     @Query("""
             SELECT e FROM Employee e
