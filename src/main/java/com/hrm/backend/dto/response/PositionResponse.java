@@ -12,6 +12,7 @@ public class PositionResponse {
     private final String code;
     private final String name;
     private final String description;
+    private final Integer rankLevel;
     private final String status;
     private final OffsetDateTime createdAt;
     private final OffsetDateTime updatedAt;

@@ -32,13 +32,13 @@ public class DepartmentController {
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
-    @Operation(summary = "Tạo phòng ban", description = "Chỉ ADMIN/HR. Hệ thống tự sinh mã theo dạng PB + ID sáu chữ số; tên chỉ được trùng với phòng ban đã vô hiệu hóa.")
+    @Operation(summary = "Tạo phòng ban", description = "Chỉ ADMIN/HR. Mã phòng ban do người dùng nhập, được chuẩn hóa thành chữ hoa và phải là duy nhất.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Đã tạo phòng ban"),
             @ApiResponse(responseCode = "400", description = "Dữ liệu không hợp lệ", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "401", description = "Thiếu hoặc sai access token", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "403", description = "Chỉ ADMIN/HR được phép tạo", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "409", description = "Tên phòng ban đang hoạt động đã tồn tại", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+            @ApiResponse(responseCode = "409", description = "Mã hoặc tên phòng ban đang hoạt động đã tồn tại", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     public ResponseEntity<DepartmentResponse> createDepartment(
             @AuthenticationPrincipal CustomUserDetails currentUser,
@@ -81,6 +81,20 @@ public class DepartmentController {
             @AuthenticationPrincipal CustomUserDetails currentUser,
             @Valid @RequestBody UpdateDepartmentStatusRequest request) {
         return ResponseEntity.ok(departmentService.updateDepartmentStatus(currentUser.getAccount().getId(), id, request));
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
+    @Operation(summary = "Xem chi tiết phòng ban", description = "Chỉ ADMIN/HR. Trả thông tin phòng ban theo ID.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lấy thông tin phòng ban thành công"),
+            @ApiResponse(responseCode = "400", description = "ID phòng ban không hợp lệ", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Thiếu hoặc sai access token", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Chỉ ADMIN/HR được phép xem", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Không tìm thấy phòng ban", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<DepartmentResponse> getDepartment(@PathVariable Long id) {
+        return ResponseEntity.ok(departmentService.getDepartment(id));
     }
 
     @GetMapping
