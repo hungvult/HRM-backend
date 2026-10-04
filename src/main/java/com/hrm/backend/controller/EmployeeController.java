@@ -68,7 +68,7 @@ public class EmployeeController {
                 page, size, sortBy, sortDirection));
     }
 
-    @PatchMapping("/{id}")
+    @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
     @Operation(summary = "Cập nhật một phần hồ sơ nhân viên", description = "Chỉ cập nhật các trường được gửi; không đổi mã nhân viên, trạng thái hoặc phân công.")
     public ResponseEntity<EmployeeDto> updateEmployee(
