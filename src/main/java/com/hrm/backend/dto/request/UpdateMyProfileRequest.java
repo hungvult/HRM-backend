@@ -1,6 +1,7 @@
 package com.hrm.backend.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonAnySetter;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -17,4 +18,9 @@ public class UpdateMyProfileRequest {
     @NotBlank(message = "Địa chỉ không được để trống.")
     @Size(max = 1000, message = "Địa chỉ không được vượt quá 1000 ký tự.")
     private String address;
+
+    @JsonAnySetter
+    public void rejectUnknownField(String fieldName, Object value) {
+        throw new IllegalArgumentException("Trường không được hỗ trợ: " + fieldName);
+    }
 }
