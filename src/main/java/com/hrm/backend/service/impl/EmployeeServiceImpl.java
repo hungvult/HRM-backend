@@ -167,12 +167,16 @@ public class EmployeeServiceImpl implements EmployeeService {
                 .orElseThrow(() -> new ResourceNotFoundException("EMPLOYEE_NOT_FOUND", "Không tìm thấy nhân viên."));
         EmploymentStatus oldStatus = employee.getEmploymentStatus();
         EmploymentStatus newStatus = request.getEmploymentStatus();
+        String reason = request.getReason() == null ? null : request.getReason().trim();
+        if (newStatus == EmploymentStatus.TERMINATED && (reason == null || reason.isBlank())) {
+            throw new AuthException("EMPLOYEE_TERMINATION_REASON_REQUIRED",
+                    "Lý do là bắt buộc khi chuyển trạng thái sang TERMINATED.", 400);
+        }
         if (oldStatus == newStatus) {
             throw new AuthException("VALIDATION_ERROR", "Trạng thái mới phải khác trạng thái hiện tại.", 400);
         }
         Account actor = accounts.findById(actorAccountId)
                 .orElseThrow(() -> new ResourceNotFoundException("ACCOUNT_NOT_FOUND", "Không tìm thấy tài khoản thực hiện."));
-        String reason = request.getReason() == null ? null : request.getReason().trim();
         employee.setEmploymentStatus(newStatus);
         EmployeeStatusHistory history = statusHistories.save(EmployeeStatusHistory.builder()
                 .employee(employee)
