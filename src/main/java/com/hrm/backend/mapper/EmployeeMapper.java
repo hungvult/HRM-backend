@@ -1,6 +1,7 @@
 package com.hrm.backend.mapper;
 
 import com.hrm.backend.dto.request.CreateEmployeeRequest;
+import com.hrm.backend.dto.request.UpdateEmployeeRequest;
 import com.hrm.backend.dto.response.DepartmentDto;
 import com.hrm.backend.dto.response.EmployeeDto;
 import com.hrm.backend.dto.response.PositionDto;
@@ -40,6 +41,17 @@ public class EmployeeMapper {
                         ? null
                         : employee.getEmploymentStatus().name())
                 .build();
+    }
+
+    /** Updates only fields supplied by the client. Generated and assignment fields are untouched. */
+    public void updateEntity(UpdateEmployeeRequest request, Employee employee) {
+        if (request.getFullName() != null) employee.setFullName(request.getFullName().trim());
+        if (request.getDateOfBirth() != null) employee.setDateOfBirth(request.getDateOfBirth());
+        if (request.getGender() != null) employee.setGender(request.getGender());
+        if (request.getEmail() != null) employee.setEmail(normalizeEmail(request.getEmail()));
+        if (request.getPhone() != null) employee.setPhone(request.getPhone().trim());
+        if (request.getAddress() != null) employee.setAddress(request.getAddress().trim());
+        if (request.getHireDate() != null) employee.setHireDate(request.getHireDate());
     }
 
     public EmployeeDto toDetailResponse(Employee employee, EmployeeAssignment assignment) {

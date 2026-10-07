@@ -1,13 +1,18 @@
 package com.hrm.backend.controller;
 
 import com.hrm.backend.dto.request.CreateEmployeeRequest;
+import com.hrm.backend.dto.request.UpdateEmployeeRequest;
+import com.hrm.backend.dto.request.UpdateEmployeeStatusRequest;
 import com.hrm.backend.dto.response.EmployeeDto;
 import com.hrm.backend.dto.response.EmployeeListItemResponse;
+import com.hrm.backend.dto.response.UpdateEmployeeStatusResponse;
 import com.hrm.backend.dto.response.ErrorResponse;
 import com.hrm.backend.dto.response.PagedResponse;
 import com.hrm.backend.entity.enums.EmploymentStatus;
 import com.hrm.backend.security.CustomUserDetails;
 import com.hrm.backend.service.EmployeeService;
+import com.hrm.backend.service.EmployeeAssignmentService;
+import com.hrm.backend.dto.response.EmployeeAssignmentResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -22,10 +27,13 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-@RestController @RequestMapping("/v1/employees") @RequiredArgsConstructor
+@RestController
+@RequestMapping("/v1/employees")
+@RequiredArgsConstructor
 @SecurityRequirement(name = "bearerAuth")
 public class EmployeeController {
     private final EmployeeService employeeService;
+    private final EmployeeAssignmentService assignmentService;
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
@@ -60,6 +68,27 @@ public class EmployeeController {
                 page, size, sortBy, sortDirection));
     }
 
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
+    @Operation(summary = "Cập nhật một phần hồ sơ nhân viên", description = "Chỉ cập nhật các trường được gửi; không đổi mã nhân viên, trạng thái hoặc phân công.")
+    public ResponseEntity<EmployeeDto> updateEmployee(
+            @PathVariable Long id,
+            @AuthenticationPrincipal CustomUserDetails currentUser,
+            @Valid @RequestBody UpdateEmployeeRequest request) {
+        return ResponseEntity.ok(employeeService.updateEmployee(currentUser.getAccount().getId(), id, request));
+    }
+
+    @PatchMapping("/{id}/status")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
+    @Operation(summary = "Thay đổi trạng thái nhân viên")
+    public ResponseEntity<UpdateEmployeeStatusResponse> updateEmployeeStatus(
+            @PathVariable Long id,
+            @AuthenticationPrincipal CustomUserDetails currentUser,
+            @Valid @RequestBody UpdateEmployeeStatusRequest request) {
+        return ResponseEntity.ok(employeeService.updateEmployeeStatus(
+                currentUser.getAccount().getId(), id, request));
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'MANAGER', 'EMPLOYEE')")
     @Operation(summary = "Xem hồ sơ nhân viên", description = "ADMIN/HR xem mọi hồ sơ; MANAGER chỉ xem nhân viên trực thuộc; EMPLOYEE chỉ xem hồ sơ của chính mình.")
@@ -71,5 +100,16 @@ public class EmployeeController {
     })
     public ResponseEntity<EmployeeDto> getEmployee(@PathVariable("id") Long employeeId, @AuthenticationPrincipal CustomUserDetails currentUser) {
         return ResponseEntity.ok(employeeService.getEmployee(currentUser.getAccount().getId(), employeeId));
+    }
+
+    @GetMapping("/{id}/assignments")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'MANAGER', 'EMPLOYEE')")
+    @Operation(summary = "Xem lịch sử phân công nhân viên")
+    public ResponseEntity<PagedResponse<EmployeeAssignmentResponse>> getAssignmentHistory(
+            @PathVariable("id") Long employeeId,
+            @AuthenticationPrincipal CustomUserDetails currentUser,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(assignmentService.getAssignmentHistory(currentUser.getAccount().getId(), employeeId, page, size));
     }
 }
