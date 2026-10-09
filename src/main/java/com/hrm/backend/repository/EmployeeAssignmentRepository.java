@@ -18,6 +18,17 @@ public interface EmployeeAssignmentRepository extends JpaRepository<EmployeeAssi
 
     boolean existsByEmployeeIdAndManagerEmployeeIdAndIsCurrentTrue(Long employeeId, Long managerEmployeeId);
 
+    @Query("""
+            SELECT COUNT(assignment) FROM EmployeeAssignment assignment
+            WHERE assignment.employee.id = :employeeId
+              AND assignment.managerEmployee.id = :managerEmployeeId
+              AND assignment.effectiveFrom <= :workDate
+              AND (assignment.effectiveTo IS NULL OR assignment.effectiveTo >= :workDate)
+            """)
+    long countManagedEmployeeAtDate(@Param("employeeId") Long employeeId,
+                                    @Param("managerEmployeeId") Long managerEmployeeId,
+                                    @Param("workDate") java.time.LocalDate workDate);
+
     boolean existsByDepartmentIdAndIsCurrentTrue(Long departmentId);
 
     boolean existsByPositionIdAndIsCurrentTrue(Long positionId);
