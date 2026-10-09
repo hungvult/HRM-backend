@@ -2,6 +2,8 @@ package com.hrm.backend.service.impl;
 
 import com.hrm.backend.dto.response.*;
 import com.hrm.backend.dto.request.CreateEmployeeRequest;
+import com.hrm.backend.dto.request.UpdateEmployeeRequest;
+import com.hrm.backend.dto.request.UpdateEmployeeStatusRequest;
 import com.hrm.backend.entity.Account;
 import com.hrm.backend.entity.AuditLog;
 import com.hrm.backend.entity.Employee;
@@ -18,6 +20,7 @@ import com.hrm.backend.service.AccessScopeService;
 import com.hrm.backend.service.EmployeeService;
 import com.hrm.backend.mapper.EmployeeListMapper;
 import com.hrm.backend.mapper.EmployeeMapper;
+import com.hrm.backend.mapper.EmployeeStatusMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -40,6 +43,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     private final EmployeeStatusHistoryRepository statusHistories;
     private final AuditLogRepository audits;
     private final EmployeeMapper employeeMapper;
+    private final EmployeeStatusMapper employeeStatusMapper;
     @Override
     @Transactional
     public EmployeeDto createEmployee(Long actorAccountId, CreateEmployeeRequest request) {
@@ -113,6 +117,85 @@ public class EmployeeServiceImpl implements EmployeeService {
                 .hasNext(employeesPage.hasNext())
                 .build();
     }
+    @Override
+    @Transactional
+    public EmployeeDto updateEmployee(Long actorAccountId, Long employeeId, UpdateEmployeeRequest request) {
+        if (!request.hasChanges()) {
+            throw new AuthException("VALIDATION_ERROR", "Cần gửi ít nhất một trường để cập nhật.", 400);
+        }
+        Employee employee = employees.findById(employeeId)
+                .orElseThrow(() -> new ResourceNotFoundException("EMPLOYEE_NOT_FOUND", "Không tìm thấy nhân viên."));
+        validateTextFields(request);
+        if (request.getEmail() != null) {
+            String email = employeeMapper.normalizeEmail(request.getEmail());
+            if (employees.existsByEmailIgnoreCaseAndIdNot(email, employeeId)) {
+                throw conflict("EMPLOYEE_EMAIL_ALREADY_EXISTS", "Email nhân viên đã tồn tại.");
+            }
+        }
+        boolean newBirthDateAfterExistingHireDate = request.getDateOfBirth() != null
+                && employee.getHireDate().isBefore(request.getDateOfBirth());
+        boolean newHireDateBeforeExistingBirthDate = request.getHireDate() != null
+                && employee.getDateOfBirth() != null
+                && request.getHireDate().isBefore(employee.getDateOfBirth());
+        if (newBirthDateAfterExistingHireDate || newHireDateBeforeExistingBirthDate) {
+            throw new AuthException("EMPLOYEE_HIRE_DATE_INVALID", "Ngày vào làm phải sau ngày sinh.", 400);
+        }
+        String oldData = auditData(employee);
+        employeeMapper.updateEntity(request, employee);
+        if (employee.getDateOfBirth() != null && employee.getHireDate().isBefore(employee.getDateOfBirth())) {
+            throw new AuthException("EMPLOYEE_HIRE_DATE_INVALID", "Ngày vào làm phải sau ngày sinh.", 400);
+        }
+        Account actor = accounts.findById(actorAccountId)
+                .orElseThrow(() -> new ResourceNotFoundException("ACCOUNT_NOT_FOUND", "Không tìm thấy tài khoản thực hiện."));
+        Employee updatedEmployee = employees.save(employee);
+        audits.save(AuditLog.builder()
+                .actorAccount(actor)
+                .action("EMPLOYEE_UPDATED")
+                .entityType("EMPLOYEE")
+                .entityId(updatedEmployee.getId())
+                .oldData(oldData)
+                .newData(auditData(updatedEmployee))
+                .occurredAt(OffsetDateTime.now())
+                .build());
+        return employeeMapper.toDto(updatedEmployee);
+    }
+    @Override
+    @Transactional
+    public UpdateEmployeeStatusResponse updateEmployeeStatus(Long actorAccountId, Long employeeId,
+                                                              UpdateEmployeeStatusRequest request) {
+        Employee employee = employees.findById(employeeId)
+                .orElseThrow(() -> new ResourceNotFoundException("EMPLOYEE_NOT_FOUND", "Không tìm thấy nhân viên."));
+        EmploymentStatus oldStatus = employee.getEmploymentStatus();
+        EmploymentStatus newStatus = request.getEmploymentStatus();
+        String reason = request.getReason() == null ? null : request.getReason().trim();
+        if (newStatus == EmploymentStatus.TERMINATED && (reason == null || reason.isBlank())) {
+            throw new AuthException("EMPLOYEE_TERMINATION_REASON_REQUIRED",
+                    "Lý do là bắt buộc khi chuyển trạng thái sang TERMINATED.", 400);
+        }
+        if (oldStatus == newStatus) {
+            throw new AuthException("VALIDATION_ERROR", "Trạng thái mới phải khác trạng thái hiện tại.", 400);
+        }
+        Account actor = accounts.findById(actorAccountId)
+                .orElseThrow(() -> new ResourceNotFoundException("ACCOUNT_NOT_FOUND", "Không tìm thấy tài khoản thực hiện."));
+        employee.setEmploymentStatus(newStatus);
+        EmployeeStatusHistory history = statusHistories.save(EmployeeStatusHistory.builder()
+                .employee(employee)
+                .oldStatus(oldStatus)
+                .newStatus(newStatus)
+                .changedByAccount(actor)
+                .reason(reason)
+                .build());
+        audits.save(AuditLog.builder()
+                .actorAccount(actor)
+                .action("EMPLOYEE_STATUS_UPDATED")
+                .entityType("EMPLOYEE")
+                .entityId(employee.getId())
+                .oldData(statusAuditData(oldStatus, null))
+                .newData(statusAuditData(newStatus, reason))
+                .occurredAt(OffsetDateTime.now())
+                .build());
+        return employeeStatusMapper.toResponse(employee, history);
+    }
     private EmployeeDto toDto(Employee e) {
         return EmployeeDto.builder().id(e.getId()).employeeCode(e.getEmployeeCode()).fullName(e.getFullName())
                 .dateOfBirth(e.getDateOfBirth()).gender(e.getGender() == null ? null : e.getGender().name())
@@ -124,6 +207,22 @@ public class EmployeeServiceImpl implements EmployeeService {
     }
     private String generateEmployeeCode(Long employeeId) {
         return String.format(Locale.ROOT, "NV%06d", employeeId);
+    }
+    private void validateTextFields(UpdateEmployeeRequest request) {
+        if (request.getFullName() != null && request.getFullName().isBlank()
+                || request.getPhone() != null && request.getPhone().isBlank()) {
+            throw new AuthException("VALIDATION_ERROR", "Họ tên và số điện thoại không được để trống.", 400);
+        }
+    }
+    private String auditData(Employee employee) {
+        return String.format(Locale.ROOT,
+                "{\"fullName\":\"%s\",\"email\":\"%s\",\"phone\":\"%s\",\"hireDate\":\"%s\"}",
+                escapeJson(employee.getFullName()), escapeJson(employee.getEmail()),
+                escapeJson(employee.getPhone()), employee.getHireDate());
+    }
+    private String statusAuditData(EmploymentStatus status, String reason) {
+        String reasonValue = reason == null ? "null" : "\"" + escapeJson(reason) + "\"";
+        return String.format(Locale.ROOT, "{\"employmentStatus\":\"%s\",\"reason\":%s}", status.name(), reasonValue);
     }
     private String employeeCreatedAuditData(Employee employee) {
         return String.format(Locale.ROOT,
