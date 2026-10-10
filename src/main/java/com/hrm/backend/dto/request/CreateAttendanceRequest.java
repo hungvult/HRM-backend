@@ -1,24 +1,25 @@
-package com.hrm.backend.dto.response;
+package com.hrm.backend.dto.request;
 
 import com.hrm.backend.entity.enums.AttendanceStatus;
-import lombok.Builder;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 
 @Data
-@Builder
-public class AttendanceListItemResponse {
-    private Long id;
+public class CreateAttendanceRequest {
+    @NotNull
     private Long employeeId;
-    private String employeeCode;
-    private String employeeName;
-    private DepartmentDto department;
+    @NotNull
     private LocalDate workDate;
     private OffsetDateTime checkInAt;
     private OffsetDateTime checkOutAt;
-    private Integer workingMinutes;
+    @NotNull
     private AttendanceStatus attendanceStatus;
-    private Boolean manuallyAdjusted;
+    @NotBlank
+    @Size(max = 1000)
+    private String reason;
 }

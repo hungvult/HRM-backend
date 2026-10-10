@@ -1,7 +1,7 @@
 package com.hrm.backend.mapper;
 
 import com.hrm.backend.dto.response.AttendanceDetailResponse;
-import com.hrm.backend.dto.response.AttendanceListItemResponse;
+import com.hrm.backend.dto.response.AttendanceManagementListItemResponse;
 import com.hrm.backend.dto.response.DepartmentDto;
 import com.hrm.backend.entity.AttendanceRecord;
 import com.hrm.backend.entity.EmployeeAssignment;
@@ -10,8 +10,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class AttendanceMapper {
 
-    public AttendanceListItemResponse toListItem(AttendanceRecord record, EmployeeAssignment assignment) {
-        return AttendanceListItemResponse.builder()
+    public AttendanceManagementListItemResponse toListItem(AttendanceRecord record, EmployeeAssignment assignment) {
+        return AttendanceManagementListItemResponse.builder()
                 .id(record.getId())
                 .employeeId(record.getEmployee().getId())
                 .employeeCode(record.getEmployee().getEmployeeCode())
