@@ -59,7 +59,7 @@ public class ApiExceptionHandler {
                 .timestamp(OffsetDateTime.now(ZoneOffset.UTC).toString())
                 .status(HttpStatus.BAD_REQUEST.value())
                 .code("VALIDATION_ERROR")
-                .message("Invalid request parameters.")
+                .message("Dữ liệu gửi lên không hợp lệ.")
                 .path(request.getRequestURI())
                 .traceId(getTraceId(request))
                 .errors(errors)

@@ -95,6 +95,24 @@ On macOS or Linux:
 | `DB_URL`      | PostgreSQL JDBC connection URL | `jdbc:postgresql://localhost:5432/hrm` |
 | `DB_USERNAME` | PostgreSQL username            | `postgres`                             |
 | `DB_PASSWORD` | PostgreSQL password            | Required                               |
+| `APP_ATTENDANCE_TRUSTED_SOURCES_0_CIDR` | CIDR/IP egress của Wi-Fi công ty | Required for attendance |
+| `APP_ATTENDANCE_TRUSTED_SOURCES_0_WIFI_NETWORK_ID` | ID mạng Wi-Fi đang hoạt động trong database | Required for attendance |
+| `APP_ATTENDANCE_TRUSTED_PROXIES_0_CIDR` | IP/CIDR riêng của reverse proxy đáng tin cậy | Optional |
+
+## Attendance behind Nginx
+
+Khi backend chạy sau Nginx, chỉ cấu hình `APP_ATTENDANCE_TRUSTED_PROXIES_0_CIDR` bằng IP hoặc CIDR dành riêng cho Nginx. Backend chỉ đọc `X-Forwarded-For` từ proxy này; request gửi trực tiếp không thể tự giả mạo header.
+
+Nginx phải thay thế, không nối thêm, header địa chỉ client:
+
+```nginx
+proxy_set_header X-Forwarded-For $remote_addr;
+proxy_set_header X-Real-IP $remote_addr;
+```
+
+Nếu Nginx nằm sau load balancer, cần cấu hình `real_ip_header` và `set_real_ip_from` cho load balancer trước khi dùng `$remote_addr`. Backend nên chỉ mở cổng nội bộ cho Nginx.
+
+Trước khi bàn giao test, DevOps cần cấu hình CIDR egress thật và `wifiNetworkId` khớp một bản ghi `work_location_wifi_networks` đang active, có `work_locations` đang active với tọa độ và bán kính hợp lệ. Không dùng giá trị ví dụ trong `.env.example` cho staging/production.
 
 ## Troubleshooting
 
