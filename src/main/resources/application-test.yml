@@ -12,3 +12,11 @@ spring:
     properties:
       hibernate:
         format_sql: true
+app:
+  attendance:
+    company-timezone: ${COMPANY_TIMEZONE:Asia/Ho_Chi_Minh}
+    # Mỗi CIDR phải là IP egress/gateway đáng tin cậy của Wi-Fi công ty,
+    # không phải IP hoặc header do ứng dụng client gửi lên.
+    trusted-sources:
+      - cidr: 127.0.0.1/32
+        wifi-network-id: 1
