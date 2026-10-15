@@ -24,6 +24,14 @@ public class Notification {
     @Column(name = "notification_type", nullable = false, length = 50)
     private String notificationType;
 
+    /**
+     * Stable identifier of the business event that produced this notification.
+     * It is intentionally not exposed to clients; it makes retrying a command
+     * safe without showing the recipient the same notification twice.
+     */
+    @Column(name = "event_key", length = 150)
+    private String eventKey;
+
     @Column(name = "title", nullable = false, length = 255)
     private String title;
 
