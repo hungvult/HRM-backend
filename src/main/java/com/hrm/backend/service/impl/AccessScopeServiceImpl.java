@@ -7,6 +7,7 @@ import com.hrm.backend.repository.AccountRoleRepository;
 import com.hrm.backend.repository.EmployeeAssignmentRepository;
 import com.hrm.backend.repository.EmployeeRepository;
 import com.hrm.backend.service.AccessScopeService;
+import com.hrm.backend.service.LeaveRequestReadScope;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,7 +28,8 @@ public class AccessScopeServiceImpl implements AccessScopeService {
         if (roles.contains("ADMIN") || roles.contains("HR")) return;
         Employee actor = requireEmployee(accountId);
         if (roles.contains("EMPLOYEE") && actor.getId().equals(employeeId)) return;
-        if (roles.contains("MANAGER") && assignmentRepository.existsByEmployeeIdAndManagerEmployeeIdAndIsCurrentTrue(employeeId, actor.getId())) return;
+        if (roles.contains("MANAGER") && assignmentRepository
+                .existsByEmployeeIdAndManagerEmployeeIdAndIsCurrentTrue(employeeId, actor.getId())) return;
         throw forbidden("Bạn không có quyền truy cập hồ sơ nhân viên này.");
     }
 
@@ -60,6 +62,26 @@ public class AccessScopeServiceImpl implements AccessScopeService {
     private Employee requireEmployee(Long accountId) {
         return employeeRepository.findByAccountId(accountId)
                 .orElseThrow(() -> forbidden("Tài khoản không có hồ sơ nhân viên."));
+    }
+
+    @Override
+    public void requireCanReadLeaveRequest(Long accountId, Long requestEmployeeId) {
+        LeaveRequestReadScope scope = resolveLeaveRequestReadScope(accountId);
+        if (scope.companyWide() || scope.employeeId().equals(requestEmployeeId)
+                || (scope.canReadDirectReports() && assignmentRepository.existsByEmployeeIdAndManagerEmployeeIdAndIsCurrentTrue(requestEmployeeId, scope.employeeId()))) {
+            return;
+        }
+        throw forbidden("Bạn không có quyền truy cập đơn nghỉ phép này.");
+    }
+
+    @Override
+    public LeaveRequestReadScope resolveLeaveRequestReadScope(Long accountId) {
+        Set<String> roles = rolesFor(accountId);
+        if (roles.contains("ADMIN") || roles.contains("HR")) {
+            return new LeaveRequestReadScope(true, false, null);
+        }
+        Employee actor = requireEmployee(accountId);
+        return new LeaveRequestReadScope(false, roles.contains("MANAGER"), actor.getId());
     }
     private AuthException forbidden(String message) { return new AuthException("AUTH_FORBIDDEN_SCOPE", message, 403); }
 }

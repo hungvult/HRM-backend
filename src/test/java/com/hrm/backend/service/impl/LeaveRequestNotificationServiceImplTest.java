@@ -3,6 +3,7 @@ package com.hrm.backend.service.impl;
 import com.hrm.backend.entity.Account;
 import com.hrm.backend.entity.Employee;
 import com.hrm.backend.entity.LeaveRequest;
+import com.hrm.backend.repository.AccountRoleRepository;
 import com.hrm.backend.repository.EmployeeAssignmentRepository;
 import com.hrm.backend.repository.NotificationRepository;
 import org.junit.jupiter.api.Test;
@@ -15,9 +16,10 @@ import static org.mockito.Mockito.verify;
 class LeaveRequestNotificationServiceImplTest {
 
     private final EmployeeAssignmentRepository assignments = mock(EmployeeAssignmentRepository.class);
+    private final AccountRoleRepository accountRoles = mock(AccountRoleRepository.class);
     private final NotificationRepository notifications = mock(NotificationRepository.class);
     private final LeaveRequestNotificationServiceImpl service =
-            new LeaveRequestNotificationServiceImpl(assignments, notifications);
+            new LeaveRequestNotificationServiceImpl(assignments, accountRoles, notifications);
 
     @Test
     void retryingApprovalUsesTheSameEventKey() {
