@@ -6,6 +6,8 @@ import com.hrm.backend.dto.response.PagedResponse;
 import com.hrm.backend.entity.enums.LeaveRequestStatus;
 import com.hrm.backend.security.CustomUserDetails;
 import com.hrm.backend.service.LeaveQueryService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,11 +22,13 @@ import java.time.LocalDate;
 @RestController
 @RequestMapping({"/v1/me"})
 @RequiredArgsConstructor
+@SecurityRequirement(name = "bearerAuth")
 public class MyLeaveController {
     private final LeaveQueryService leaveQueryService;
 
     @GetMapping("/leave-balances")
     @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'MANAGER', 'EMPLOYEE')")
+    @Operation(summary = "Số dư phép của tôi")
     public ResponseEntity<LeaveBalanceListResponse> getMyLeaveBalances(
             @AuthenticationPrincipal CustomUserDetails currentUser,
             @RequestParam int year) {
@@ -33,6 +37,7 @@ public class MyLeaveController {
 
     @GetMapping("/leave-requests")
     @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'MANAGER', 'EMPLOYEE')")
+    @Operation(summary = "Danh sách đơn nghỉ phép của tôi")
     public ResponseEntity<PagedResponse<LeaveRequestListItemResponse>> getMyLeaveRequests(
             @AuthenticationPrincipal CustomUserDetails currentUser,
             @RequestParam(required = false) LeaveRequestStatus status,
