@@ -72,6 +72,8 @@ public class AttendanceServiceImpl implements AttendanceService {
         record.setCheckInWifiNetwork(wifi.network());
         record.setCheckInLatitude(verifiedLocation.latitude());
         record.setCheckInLongitude(verifiedLocation.longitude());
+        record.setCheckInGpsAccuracyMeters(location.getAccuracyMeters());
+        record.setCheckInLocationCapturedAt(OffsetDateTime.ofInstant(location.getLocationCapturedAt(), zone));
         record.setCheckInLocationDistanceMeters(verifiedLocation.distanceMeters());
         AttendanceRecord saved = attendanceRecords.save(record);
         return response(saved, "Check-in thành công.");
@@ -106,6 +108,8 @@ public class AttendanceServiceImpl implements AttendanceService {
         record.setCheckOutWifiNetwork(wifi.network());
         record.setCheckOutLatitude(verifiedLocation.latitude());
         record.setCheckOutLongitude(verifiedLocation.longitude());
+        record.setCheckOutGpsAccuracyMeters(location.getAccuracyMeters());
+        record.setCheckOutLocationCapturedAt(OffsetDateTime.ofInstant(location.getLocationCapturedAt(), zone));
         record.setCheckOutLocationDistanceMeters(verifiedLocation.distanceMeters());
         record.setWorkingMinutes((int) minutes);
         AttendanceRecord saved = attendanceRecords.save(record);

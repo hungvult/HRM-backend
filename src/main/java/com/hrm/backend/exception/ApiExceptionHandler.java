@@ -72,7 +72,10 @@ public class ApiExceptionHandler {
     private boolean isAttendanceGpsValidationError(String path, List<ErrorResponse.FieldError> errors) {
         return isAttendanceEndpoint(path) && errors.stream()
                 .map(ErrorResponse.FieldError::getField)
-                .anyMatch(field -> "latitude".equals(field) || "longitude".equals(field));
+                .anyMatch(field -> "latitude".equals(field)
+                        || "longitude".equals(field)
+                        || "accuracyMeters".equals(field)
+                        || "locationCapturedAt".equals(field));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
@@ -97,7 +100,9 @@ public class ApiExceptionHandler {
 
     private boolean isAttendanceEndpoint(String path) {
         return "/v1/attendance/check-in".equals(path)
-                || "/v1/attendance/check-out".equals(path);
+                || "/v1/attendance/check-out".equals(path)
+                || "/api/v1/attendance/check-in".equals(path)
+                || "/api/v1/attendance/check-out".equals(path);
     }
 
     @ExceptionHandler(AccessDeniedException.class)

@@ -15,6 +15,9 @@ spring:
 app:
   attendance:
     company-timezone: ${COMPANY_TIMEZONE:Asia/Ho_Chi_Minh}
+    max-gps-accuracy-meters: ${APP_ATTENDANCE_MAX_GPS_ACCURACY_METERS:50}
+    max-location-age-seconds: ${APP_ATTENDANCE_MAX_LOCATION_AGE_SECONDS:60}
+    max-future-location-seconds: ${APP_ATTENDANCE_MAX_FUTURE_LOCATION_SECONDS:15}
     # Mỗi CIDR phải là IP egress/gateway đáng tin cậy của Wi-Fi công ty,
     # không phải IP hoặc header do ứng dụng client gửi lên.
     trusted-sources:
