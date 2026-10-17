@@ -4,6 +4,8 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -21,6 +23,15 @@ public class AttendanceProperties {
 
     @NotBlank
     private String companyTimezone = "Asia/Ho_Chi_Minh";
+
+    @Positive
+    private int maxGpsAccuracyMeters = 50;
+
+    @Positive
+    private int maxLocationAgeSeconds = 60;
+
+    @PositiveOrZero
+    private int maxFutureLocationSeconds = 15;
 
     @Valid
     @NotEmpty(message = "Phải cấu hình ít nhất một nguồn Wi-Fi công ty tin cậy.")

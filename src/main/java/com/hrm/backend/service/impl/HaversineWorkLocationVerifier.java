@@ -1,5 +1,6 @@
 package com.hrm.backend.service.impl;
 
+import com.hrm.backend.config.AttendanceProperties;
 import com.hrm.backend.dto.request.AttendanceLocationRequest;
 import com.hrm.backend.entity.WorkLocation;
 import com.hrm.backend.exception.AuthException;
@@ -8,15 +9,23 @@ import com.hrm.backend.service.WorkLocationVerifier;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+
+import lombok.RequiredArgsConstructor;
 
 @Service
+@RequiredArgsConstructor
 public class HaversineWorkLocationVerifier implements WorkLocationVerifier {
 
     private static final double EARTH_RADIUS_METERS = 6_371_000d;
+    private final AttendanceProperties properties;
+    private final Clock attendanceClock;
 
     @Override
     public VerifiedWorkLocation verify(AttendanceLocationRequest location, WorkLocation workLocation) {
         requireValidCoordinates(location);
+        requireAcceptableGpsQuality(location);
         if (workLocation == null || !Boolean.TRUE.equals(workLocation.getIsActive())
                 || workLocation.getLatitude() == null || workLocation.getLongitude() == null
                 || workLocation.getAllowedRadiusMeters() == null || workLocation.getAllowedRadiusMeters() <= 0) {
@@ -43,6 +52,27 @@ public class HaversineWorkLocationVerifier implements WorkLocationVerifier {
                 || location.getLongitude().compareTo(BigDecimal.valueOf(180)) > 0) {
             throw new AuthException("ATTENDANCE_INVALID_GPS", "Tọa độ GPS không hợp lệ.", 400);
         }
+    }
+
+    private void requireAcceptableGpsQuality(AttendanceLocationRequest location) {
+        if (location.getAccuracyMeters() == null
+                || location.getAccuracyMeters().compareTo(BigDecimal.ZERO) <= 0
+                || location.getAccuracyMeters().compareTo(BigDecimal.valueOf(properties.getMaxGpsAccuracyMeters())) > 0) {
+            throw invalidGps("Độ chính xác GPS không đạt yêu cầu.");
+        }
+        Instant capturedAt = location.getLocationCapturedAt();
+        if (capturedAt == null) {
+            throw invalidGps("Thời điểm lấy vị trí GPS không hợp lệ.");
+        }
+        Instant now = attendanceClock.instant();
+        if (capturedAt.isBefore(now.minusSeconds(properties.getMaxLocationAgeSeconds()))
+                || capturedAt.isAfter(now.plusSeconds(properties.getMaxFutureLocationSeconds()))) {
+            throw invalidGps("Vị trí GPS đã quá cũ hoặc thời điểm không hợp lệ.");
+        }
+    }
+
+    private AuthException invalidGps(String message) {
+        return new AuthException("ATTENDANCE_INVALID_GPS", message, 400);
     }
 
     private double calculateDistanceMeters(BigDecimal latitude, BigDecimal longitude,
