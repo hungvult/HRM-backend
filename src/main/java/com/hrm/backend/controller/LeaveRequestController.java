@@ -5,11 +5,16 @@ import com.hrm.backend.dto.response.LeaveRequestListItemResponse;
 import com.hrm.backend.dto.response.PagedResponse;
 import com.hrm.backend.dto.request.CreateLeaveRequest;
 import com.hrm.backend.dto.response.LeaveRequestSubmissionResponse;
+import com.hrm.backend.dto.response.LeaveRequestApprovalResponse;
+import com.hrm.backend.dto.request.RejectLeaveRequest;
+import com.hrm.backend.dto.response.LeaveRequestRejectionResponse;
 import com.hrm.backend.entity.enums.LeaveRequestStatus;
 import com.hrm.backend.security.CustomUserDetails;
 import com.hrm.backend.service.LeaveQueryService;
 import com.hrm.backend.service.LeaveRequestSubmissionService;
 import com.hrm.backend.service.LeaveRequestCancellationService;
+import com.hrm.backend.service.LeaveRequestApprovalService;
+import com.hrm.backend.service.LeaveRequestRejectionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
@@ -36,6 +41,8 @@ public class LeaveRequestController {
     private final LeaveQueryService leaveQueryService;
     private final LeaveRequestSubmissionService leaveRequestSubmissionService;
     private final LeaveRequestCancellationService leaveRequestCancellationService;
+    private final LeaveRequestApprovalService leaveRequestApprovalService;
+    private final LeaveRequestRejectionService leaveRequestRejectionService;
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'MANAGER', 'EMPLOYEE')")
@@ -56,6 +63,25 @@ public class LeaveRequestController {
             @PathVariable Long id,
             @AuthenticationPrincipal CustomUserDetails currentUser) {
         return ResponseEntity.ok(leaveRequestCancellationService.cancel(currentUser.getAccount().getId(), id));
+    }
+
+    @PostMapping("/{id}/approve")
+    @PreAuthorize("hasAnyRole('HR', 'MANAGER')")
+    @Operation(summary = "Duyệt đơn nghỉ phép")
+    public ResponseEntity<LeaveRequestApprovalResponse> approveLeaveRequest(
+            @PathVariable Long id,
+            @AuthenticationPrincipal CustomUserDetails currentUser) {
+        return ResponseEntity.ok(leaveRequestApprovalService.approve(currentUser.getAccount().getId(), id));
+    }
+
+    @PostMapping("/{id}/reject")
+    @PreAuthorize("hasAnyRole('HR', 'MANAGER')")
+    @Operation(summary = "Từ chối đơn nghỉ phép")
+    public ResponseEntity<LeaveRequestRejectionResponse> rejectLeaveRequest(
+            @PathVariable Long id,
+            @AuthenticationPrincipal CustomUserDetails currentUser,
+            @Valid @RequestBody RejectLeaveRequest request) {
+        return ResponseEntity.ok(leaveRequestRejectionService.reject(currentUser.getAccount().getId(), id, request));
     }
 
     @GetMapping("/{id}")
