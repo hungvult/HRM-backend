@@ -46,6 +46,7 @@ public class LeaveRequestController {
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'MANAGER', 'EMPLOYEE')")
+    @Operation(summary = "Gửi đơn nghỉ phép")
     public ResponseEntity<LeaveRequestSubmissionResponse> submitLeaveRequest(
             @AuthenticationPrincipal CustomUserDetails currentUser,
             @Valid @RequestBody CreateLeaveRequest request) {
@@ -57,6 +58,7 @@ public class LeaveRequestController {
 
     @PostMapping("/{id}/cancel")
     @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'MANAGER', 'EMPLOYEE')")
+    @Operation(summary = "Hủy đơn nghỉ phép")
     public ResponseEntity<LeaveRequestDetailResponse> cancelLeaveRequest(
             @PathVariable Long id,
             @AuthenticationPrincipal CustomUserDetails currentUser) {
@@ -84,6 +86,7 @@ public class LeaveRequestController {
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'MANAGER', 'EMPLOYEE')")
+    @Operation(summary = "Chi tiết đơn nghỉ phép")
     public ResponseEntity<LeaveRequestDetailResponse> getLeaveRequest(@PathVariable Long id,
                                                                         @AuthenticationPrincipal CustomUserDetails currentUser) {
         return ResponseEntity.ok(leaveQueryService.getLeaveRequestDetail(currentUser.getAccount().getId(), id));
@@ -91,6 +94,7 @@ public class LeaveRequestController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'MANAGER')")
+    @Operation(summary = "Danh sách đơn nghỉ phép theo phạm vi")
     public ResponseEntity<PagedResponse<LeaveRequestListItemResponse>> getScopedLeaveRequests(
             @AuthenticationPrincipal CustomUserDetails currentUser,
             @RequestParam(required = false) LeaveRequestStatus status,
