@@ -19,6 +19,7 @@ import com.hrm.backend.mapper.AttendanceMapper;
 import com.hrm.backend.repository.AccountRepository;
 import com.hrm.backend.repository.AttendanceAdjustmentHistoryRepository;
 import com.hrm.backend.repository.AttendanceRecordRepository;
+import com.hrm.backend.repository.AttendanceRecordSpecifications;
 import com.hrm.backend.repository.EmployeeAssignmentRepository;
 import com.hrm.backend.repository.EmployeeRepository;
 import com.hrm.backend.service.AccessScopeService;
@@ -61,8 +62,8 @@ public class AttendanceManagementServiceImpl implements AttendanceManagementServ
                                                                                    int size, String sortBy, String sortDirection) {
         validateSearch(fromDate, toDate, page, size, sortBy, sortDirection);
         Long managerEmployeeId = accessScope.managerEmployeeIdForAttendanceScope(actorAccountId);
-        Page<AttendanceRecord> result = attendanceRecords.searchAttendances(
-                q == null ? "" : q.trim(), employeeId, departmentId, status, fromDate, toDate, managerEmployeeId,
+        Page<AttendanceRecord> result = attendanceRecords.findAll(AttendanceRecordSpecifications.matchesSearch(
+                q, employeeId, departmentId, status, fromDate, toDate, managerEmployeeId),
                 PageRequest.of(page, size, Sort.by(Sort.Direction.fromString(sortDirection), sortBy)));
         Map<Long, List<EmployeeAssignment>> assignmentsByEmployee = assignmentsByEmployee(result.getContent());
 
