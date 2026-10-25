@@ -28,7 +28,22 @@ public class PayrollRun {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
-    private PayrollRunStatus status = PayrollRunStatus.DRAFT;
+    private PayrollRunStatus status = PayrollRunStatus.GENERATED;
+
+    /** C: standard Monday-Friday work days captured when this run is generated. */
+    @Column(name = "standard_working_days")
+    private Integer standardWorkingDays;
+
+    /** M: paid standard minutes in one work day captured when this run is generated. */
+    @Column(name = "standard_minutes_per_day")
+    private Integer standardMinutesPerDay;
+
+    @Column(name = "calculation_rule_version", length = 50)
+    private String calculationRuleVersion;
+
+    /** Opaque fingerprint used to reject a preview whose source data has changed. */
+    @Column(name = "input_fingerprint", length = 128)
+    private String inputFingerprint;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "generated_by_account_id")
@@ -44,17 +59,25 @@ public class PayrollRun {
     @Column(name = "published_at")
     private OffsetDateTime publishedAt;
 
-    @Column(name = "revision", nullable = false)
+    /** @deprecated Kept only to read legacy rows; MVP always writes revision 1. */
+    @Deprecated
+    @Column(name = "revision", nullable = false, updatable = false)
     private Integer revision = 1;
 
+    /** @deprecated The MVP has no replacement/revision flow. */
+    @Deprecated
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "supersedes_payroll_run_id")
     private PayrollRun supersedesPayrollRun;
 
-    @Column(name = "is_current", nullable = false)
+    /** @deprecated Kept only to read legacy rows; MVP always writes true. */
+    @Deprecated
+    @Column(name = "is_current", nullable = false, updatable = false)
     private Boolean isCurrent = true;
 
-    @Column(name = "superseded_at")
+    /** @deprecated The MVP has no replacement/revision flow. */
+    @Deprecated
+    @Column(name = "superseded_at", updatable = false)
     private OffsetDateTime supersededAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
