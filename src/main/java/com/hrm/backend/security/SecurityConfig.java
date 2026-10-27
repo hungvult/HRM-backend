@@ -47,6 +47,7 @@ public class SecurityConfig {
                         .requestMatchers("/v1/auth/login", "/v1/auth/refresh").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll() // Allow swagger
                         .requestMatchers("/v1/accounts/**").hasRole("ADMIN")
+                        .requestMatchers("/v1/payroll/my-payslips/**").authenticated()
                         .requestMatchers("/v1/payroll/**").hasRole("HR")
                         .requestMatchers("/v1/employees/**").hasAnyRole("ADMIN", "HR", "MANAGER", "EMPLOYEE")
                         .anyRequest().authenticated()
