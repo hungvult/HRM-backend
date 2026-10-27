@@ -34,6 +34,9 @@ logging:
 
 app:
   company-timezone: ${COMPANY_TIMEZONE:Asia/Ho_Chi_Minh}
+  payroll:
+    # No business fallback: an unset value must make the preview BLOCKED.
+    standard-minutes-per-day: ${PAYROLL_STANDARD_MINUTES_PER_DAY:0}
   jwt:
     secret: ${JWT_SECRET}
     access-token-expiration-ms: 900000

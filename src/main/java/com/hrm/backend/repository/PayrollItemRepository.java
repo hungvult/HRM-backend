@@ -12,4 +12,8 @@ public interface PayrollItemRepository extends JpaRepository<PayrollItem, Long> 
 
     Optional<PayrollItem> findFirstBySalaryProfileIdOrderByPayrollRunPayrollYearDescPayrollRunPayrollMonthDesc(
             Long salaryProfileId);
+
+    Optional<PayrollItem> findByPayrollRunIdAndEmployeeId(Long payrollRunId, Long employeeId);
+
+    java.util.List<PayrollItem> findByPayrollRunId(Long payrollRunId);
 }
