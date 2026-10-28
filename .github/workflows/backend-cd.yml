@@ -104,6 +104,14 @@ jobs:
           script: |
             set -e
 
+            test -r "$ENV_FILE"
+            for field in APP_ATTENDANCE_TRUSTED_SOURCES_0_CIDR APP_ATTENDANCE_TRUSTED_SOURCES_0_WIFI_NETWORK_ID APP_ATTENDANCE_TRUSTED_PROXIES_0_CIDR; do
+              if ! grep -Eq "^${field}=.+" "$ENV_FILE"; then
+                echo "Missing attendance configuration: $field" >&2
+                exit 1
+              fi
+            done
+
             echo "========================================"
             echo "Starting HRM Backend deployment: $IMAGE_TAG"
             echo "========================================"
@@ -134,17 +142,20 @@ jobs:
               --env-file "$ENV_FILE" \
               ghcr.io/hungvult/hrm-backend:$IMAGE_SHA
 
-            echo "Waiting for backend container..."
-            sleep 10
-
-            echo "Checking container status..."
-            docker ps --filter name="$CONTAINER_NAME"
-
-            echo "Checking backend logs..."
-            docker logs "$CONTAINER_NAME" --tail 30
-
-            echo "Testing backend endpoint..."
-            curl -i --max-time 10 http://127.0.0.1:$HOST_PORT/api || true
+            echo "Waiting for backend readiness..."
+            ready=false
+            for attempt in $(seq 1 24); do
+              status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:$HOST_PORT/v1/me/profile" || true)
+              if [ "$status" = "401" ]; then
+                ready=true
+                break
+              fi
+              sleep 5
+            done
+            if [ "$ready" != true ]; then
+              echo "Backend did not become ready; deployment failed." >&2
+              exit 1
+            fi
 
             echo "Logging out from GHCR..."
             docker logout ghcr.io || true

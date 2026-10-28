@@ -7,6 +7,8 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
+import java.util.Collection;
+import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -18,6 +20,17 @@ public interface EmployeeAssignmentRepository extends JpaRepository<EmployeeAssi
 
     boolean existsByEmployeeIdAndManagerEmployeeIdAndIsCurrentTrue(Long employeeId, Long managerEmployeeId);
 
+    @Query("""
+            SELECT COUNT(assignment) FROM EmployeeAssignment assignment
+            WHERE assignment.employee.id = :employeeId
+              AND assignment.managerEmployee.id = :managerEmployeeId
+              AND assignment.effectiveFrom <= :workDate
+              AND (assignment.effectiveTo IS NULL OR assignment.effectiveTo >= :workDate)
+            """)
+    long countManagedEmployeeAtDate(@Param("employeeId") Long employeeId,
+                                    @Param("managerEmployeeId") Long managerEmployeeId,
+                                    @Param("workDate") java.time.LocalDate workDate);
+
     boolean existsByDepartmentIdAndIsCurrentTrue(Long departmentId);
 
     boolean existsByPositionIdAndIsCurrentTrue(Long positionId);
@@ -28,6 +41,18 @@ public interface EmployeeAssignmentRepository extends JpaRepository<EmployeeAssi
            "LEFT JOIN FETCH ea.managerEmployee " +
            "WHERE ea.employee.id = :employeeId AND ea.isCurrent = true")
     Optional<EmployeeAssignment> findCurrentAssignmentByEmployeeId(@Param("employeeId") Long employeeId);
+
+    @Query("""
+            SELECT assignment FROM EmployeeAssignment assignment
+            LEFT JOIN FETCH assignment.department
+            WHERE assignment.employee.id IN :employeeIds
+              AND assignment.effectiveFrom <= :toDate
+              AND (assignment.effectiveTo IS NULL OR assignment.effectiveTo >= :fromDate)
+            """)
+    List<EmployeeAssignment> findEffectiveAssignmentsForEmployeesBetween(
+            @Param("employeeIds") Collection<Long> employeeIds,
+            @Param("fromDate") java.time.LocalDate fromDate,
+            @Param("toDate") java.time.LocalDate toDate);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT ea FROM EmployeeAssignment ea WHERE ea.employee.id = :employeeId AND ea.isCurrent = true")

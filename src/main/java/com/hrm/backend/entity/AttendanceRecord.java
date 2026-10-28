@@ -41,11 +41,29 @@ public class AttendanceRecord {
     @Column(name = "check_in_longitude", precision = 9, scale = 6)
     private BigDecimal checkInLongitude;
 
+    @Column(name = "check_in_gps_accuracy_meters", precision = 8, scale = 2)
+    private BigDecimal checkInGpsAccuracyMeters;
+
+    @Column(name = "check_in_location_captured_at")
+    private OffsetDateTime checkInLocationCapturedAt;
+
     @Column(name = "check_out_latitude", precision = 9, scale = 6)
     private BigDecimal checkOutLatitude;
 
     @Column(name = "check_out_longitude", precision = 9, scale = 6)
     private BigDecimal checkOutLongitude;
+
+    @Column(name = "check_out_gps_accuracy_meters", precision = 8, scale = 2)
+    private BigDecimal checkOutGpsAccuracyMeters;
+
+    @Column(name = "check_out_location_captured_at")
+    private OffsetDateTime checkOutLocationCapturedAt;
+
+    @Column(name = "check_in_location_distance_meters")
+    private Integer checkInLocationDistanceMeters;
+
+    @Column(name = "check_out_location_distance_meters")
+    private Integer checkOutLocationDistanceMeters;
 
     @Column(name = "check_in_wifi_ssid", length = 255)
     private String checkInWifiSsid;
@@ -75,8 +93,16 @@ public class AttendanceRecord {
     private WorkLocation checkInWorkLocation;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "check_in_wifi_network_id")
+    private WorkLocationWifiNetwork checkInWifiNetwork;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "check_out_work_location_id")
     private WorkLocation checkOutWorkLocation;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "check_out_wifi_network_id")
+    private WorkLocationWifiNetwork checkOutWifiNetwork;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

@@ -10,6 +10,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import tools.jackson.databind.exc.InvalidFormatException;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -55,11 +56,12 @@ public class ApiExceptionHandler {
                         .build())
                 .collect(Collectors.toList());
 
+        boolean invalidAttendanceGps = isAttendanceGpsValidationError(request.getRequestURI(), errors);
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(OffsetDateTime.now(ZoneOffset.UTC).toString())
                 .status(HttpStatus.BAD_REQUEST.value())
-                .code("VALIDATION_ERROR")
-                .message("Invalid request parameters.")
+                .code(invalidAttendanceGps ? "ATTENDANCE_INVALID_GPS" : "VALIDATION_ERROR")
+                .message(invalidAttendanceGps ? "Tọa độ GPS không hợp lệ." : "Dữ liệu gửi lên không hợp lệ.")
                 .path(request.getRequestURI())
                 .traceId(getTraceId(request))
                 .errors(errors)
@@ -67,17 +69,40 @@ public class ApiExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
     }
 
+    private boolean isAttendanceGpsValidationError(String path, List<ErrorResponse.FieldError> errors) {
+        return isAttendanceEndpoint(path) && errors.stream()
+                .map(ErrorResponse.FieldError::getField)
+                .anyMatch(field -> "latitude".equals(field)
+                        || "longitude".equals(field)
+                        || "accuracyMeters".equals(field)
+                        || "locationCapturedAt".equals(field));
+    }
+
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleMalformedJson(HttpMessageNotReadableException ex, HttpServletRequest request) {
+        boolean invalidAttendanceGps = isAttendanceGpsReadError(request.getRequestURI(), ex);
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(OffsetDateTime.now(ZoneOffset.UTC).toString())
                 .status(HttpStatus.BAD_REQUEST.value())
-                .code("INVALID_REQUEST_BODY")
-                .message("Request body không hợp lệ hoặc chứa trường không được hỗ trợ.")
+                .code(invalidAttendanceGps ? "ATTENDANCE_INVALID_GPS" : "INVALID_REQUEST_BODY")
+                .message(invalidAttendanceGps
+                        ? "Tọa độ GPS không hợp lệ."
+                        : "Request body không hợp lệ hoặc chứa trường không được hỗ trợ.")
                 .path(request.getRequestURI())
                 .traceId(getTraceId(request))
                 .build();
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+    }
+
+    private boolean isAttendanceGpsReadError(String path, HttpMessageNotReadableException ex) {
+        return isAttendanceEndpoint(path) && ex.getMostSpecificCause() instanceof InvalidFormatException;
+    }
+
+    private boolean isAttendanceEndpoint(String path) {
+        return "/v1/attendance/check-in".equals(path)
+                || "/v1/attendance/check-out".equals(path)
+                || "/api/v1/attendance/check-in".equals(path)
+                || "/api/v1/attendance/check-out".equals(path);
     }
 
     @ExceptionHandler(AccessDeniedException.class)
