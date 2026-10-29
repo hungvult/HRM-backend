@@ -15,8 +15,14 @@ import java.time.LocalDate;
 import java.util.Optional;
 import java.math.BigDecimal;
 import java.util.Collection;
+import java.util.List;
 
 public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long> {
+    @EntityGraph(attributePaths = {"employee", "leaveType"})
+    @Query("select r from LeaveRequest r where r.employee.id in :employeeIds and r.startDate <= :toDate and r.endDate >= :fromDate")
+    List<LeaveRequest> findForPayrollPeriod(@Param("employeeIds") Collection<Long> employeeIds,
+                                            @Param("fromDate") LocalDate fromDate,
+                                            @Param("toDate") LocalDate toDate);
     @EntityGraph(attributePaths = {"employee", "leaveType"})
     @Query("""
             SELECT r FROM LeaveRequest r WHERE r.employee.id = :employeeId
