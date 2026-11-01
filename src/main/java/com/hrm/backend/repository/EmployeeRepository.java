@@ -11,12 +11,22 @@ import org.springframework.stereotype.Repository;
 import org.springframework.data.jpa.repository.Lock;
 import jakarta.persistence.LockModeType;
 import java.util.Optional;
+import java.util.List;
+import java.time.LocalDate;
 
 @Repository
 public interface EmployeeRepository extends JpaRepository<Employee, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT e FROM Employee e WHERE e.id = :employeeId")
     Optional<Employee> findByIdForUpdate(@Param("employeeId") Long employeeId);
+
+    /**
+     * Uses the same employee row lock as salary-profile writes so confirmation
+     * cannot snapshot a salary timeline while HR is changing that timeline.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT e FROM Employee e WHERE e.hireDate <= :periodEnd ORDER BY e.id")
+    List<Employee> findEligibleForPayrollForUpdate(@Param("periodEnd") LocalDate periodEnd);
     Optional<Employee> findByAccountId(Long accountId);
     boolean existsByEmailIgnoreCase(String email);
     boolean existsByEmailIgnoreCaseAndIdNot(String email, Long id);
