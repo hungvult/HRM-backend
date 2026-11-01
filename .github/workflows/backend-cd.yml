@@ -132,6 +132,8 @@ jobs:
               --network "$NETWORK_NAME" \
               -p 127.0.0.1:$HOST_PORT:8080 \
               --env-file "$ENV_FILE" \
+              -e APP_ATTENDANCE_WIFI_VERIFICATION_ENABLED=true \
+              -e APP_ATTENDANCE_GPS_WORK_LOCATION_ID=1 \
               -e APP_ATTENDANCE_TRUSTED_SOURCES_2_CIDR=42.118.55.188/32 \
               -e APP_ATTENDANCE_TRUSTED_SOURCES_2_WIFI_NETWORK_ID=2 \
               -e APP_ATTENDANCE_TRUSTED_SOURCES_3_CIDR=104.28.205.70/32 \

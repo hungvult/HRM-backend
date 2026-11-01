@@ -26,7 +26,7 @@ public class AttendanceController {
     private final AttendanceService attendanceService;
 
     @PostMapping("/check-in")
-    @Operation(summary = "Ghi nhận check-in của nhân viên đang đăng nhập")
+    @Operation(summary = "Ghi nhận check-in của nhân viên đang đăng nhập", description = "Luôn kiểm tra GPS hợp lệ. Khi tạm tắt app.attendance.wifi-verification-enabled, xác minh GPS tại địa điểm app.attendance.gps-work-location-id và bỏ đối chiếu IP Wi-Fi.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Check-in thành công"),
             @ApiResponse(responseCode = "400", description = "Dữ liệu GPS không hợp lệ"),
@@ -44,7 +44,7 @@ public class AttendanceController {
     }
 
     @PostMapping("/check-out")
-    @Operation(summary = "Ghi nhận check-out của nhân viên đang đăng nhập")
+    @Operation(summary = "Ghi nhận check-out của nhân viên đang đăng nhập", description = "Luôn kiểm tra GPS mới và thứ tự check-in/out. Việc kiểm tra IP Wi-Fi phụ thuộc app.attendance.wifi-verification-enabled, không thay đổi dữ liệu request của app.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Check-out thành công"),
             @ApiResponse(responseCode = "400", description = "Dữ liệu GPS không hợp lệ"),

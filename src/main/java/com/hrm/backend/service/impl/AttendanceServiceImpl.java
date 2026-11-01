@@ -8,11 +8,14 @@ import com.hrm.backend.dto.response.MonthlyAttendanceResponse;
 import com.hrm.backend.dto.response.TodayAttendanceResponse;
 import com.hrm.backend.entity.AttendanceRecord;
 import com.hrm.backend.entity.Employee;
+import com.hrm.backend.entity.WorkLocation;
+import com.hrm.backend.entity.WorkLocationWifiNetwork;
 import com.hrm.backend.entity.enums.AttendanceStatus;
 import com.hrm.backend.entity.enums.EmploymentStatus;
 import com.hrm.backend.exception.AuthException;
 import com.hrm.backend.repository.AttendanceRecordRepository;
 import com.hrm.backend.repository.EmployeeRepository;
+import com.hrm.backend.repository.WorkLocationRepository;
 import com.hrm.backend.service.AttendanceService;
 import com.hrm.backend.service.CompanyWifiVerifier;
 import com.hrm.backend.service.VerifiedCompanyWifi;
@@ -43,13 +46,18 @@ public class AttendanceServiceImpl implements AttendanceService {
     private final WorkLocationVerifier workLocationVerifier;
     private final AttendanceProperties properties;
     private final Clock attendanceClock;
+    private final WorkLocationRepository workLocations;
 
     @Override
     @Transactional
+    // accountId là ID accounts từ principal đã xác thực; location là GPS app gửi, không chứa giờ công hoặc địa điểm do client chọn.
+    // Khóa nhân viên đang làm việc, chọn địa điểm phía server rồi xác minh GPS; lỗi thì dừng trước khi lưu công.
+    // Ngày công lấy theo attendanceClock và múi giờ công ty. Khóa attendance_records theo employee_id/work_date để chặn chấm trùng.
+    // Sau kiểm tra trạng thái mới ghi check_in_at, địa điểm và GPS; Wi-Fi chỉ được ghi nếu thực sự đã xác minh.
     public AttendanceActionResponse checkIn(Long accountId, AttendanceLocationRequest location, HttpServletRequest request) {
         Employee employee = requireWorkingEmployee(accountId);
-        VerifiedCompanyWifi wifi = wifiVerifier.verify(request);
-        VerifiedWorkLocation verifiedLocation = workLocationVerifier.verify(location, wifi.network().getWorkLocation());
+        AttendanceEvidence evidence = verifyAttendanceEvidence(location, request);
+        VerifiedWorkLocation verifiedLocation = evidence.gps();
         Instant now = attendanceClock.instant();
         ZoneId zone = properties.companyZoneId();
         LocalDate workDate = now.atZone(zone).toLocalDate();
@@ -67,9 +75,10 @@ public class AttendanceServiceImpl implements AttendanceService {
         }
 
         record.setCheckInAt(OffsetDateTime.ofInstant(now, zone));
-        record.setCheckInWifiSsid(wifi.network().getSsid());
-        record.setCheckInWorkLocation(wifi.network().getWorkLocation());
-        record.setCheckInWifiNetwork(wifi.network());
+        // Chế độ GPS-only để trống bằng chứng Wi-Fi vì backend không xác minh mạng trong lượt này.
+        record.setCheckInWifiSsid(evidence.wifi() == null ? null : evidence.wifi().getSsid());
+        record.setCheckInWorkLocation(evidence.workLocation());
+        record.setCheckInWifiNetwork(evidence.wifi());
         record.setCheckInLatitude(verifiedLocation.latitude());
         record.setCheckInLongitude(verifiedLocation.longitude());
         record.setCheckInGpsAccuracyMeters(location.getAccuracyMeters());
@@ -81,10 +90,14 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Override
     @Transactional
+    // accountId là ID accounts từ principal; location là GPS mới do app lấy khi người dùng bấm check-out.
+    // Xác minh nhân viên và vị trí trước, rồi khóa attendance_records theo nhân viên/ngày công từ giờ server và múi giờ công ty.
+    // Chưa check-in hoặc đã check-out thì trả 409; chỉ khi hợp lệ mới ghi check_out_at, bằng chứng vị trí và working_minutes.
+    // Giữ bằng chứng check-in cũ, kể cả khi hai lượt chạy ở hai chế độ Wi-Fi khác nhau; lỗi sẽ rollback toàn bộ lượt cập nhật.
     public AttendanceActionResponse checkOut(Long accountId, AttendanceLocationRequest location, HttpServletRequest request) {
         Employee employee = requireWorkingEmployee(accountId);
-        VerifiedCompanyWifi wifi = wifiVerifier.verify(request);
-        VerifiedWorkLocation verifiedLocation = workLocationVerifier.verify(location, wifi.network().getWorkLocation());
+        AttendanceEvidence evidence = verifyAttendanceEvidence(location, request);
+        VerifiedWorkLocation verifiedLocation = evidence.gps();
         Instant now = attendanceClock.instant();
         ZoneId zone = properties.companyZoneId();
         LocalDate workDate = now.atZone(zone).toLocalDate();
@@ -103,9 +116,10 @@ public class AttendanceServiceImpl implements AttendanceService {
             throw new IllegalStateException("Thời gian check-in/check-out không hợp lệ.");
         }
         record.setCheckOutAt(OffsetDateTime.ofInstant(now, zone));
-        record.setCheckOutWifiSsid(wifi.network().getSsid());
-        record.setCheckOutWorkLocation(wifi.network().getWorkLocation());
-        record.setCheckOutWifiNetwork(wifi.network());
+        // Lưu địa điểm/GPS thực sự đã xác minh; không tự gán SSID hoặc network ID khi bỏ qua Wi-Fi.
+        record.setCheckOutWifiSsid(evidence.wifi() == null ? null : evidence.wifi().getSsid());
+        record.setCheckOutWorkLocation(evidence.workLocation());
+        record.setCheckOutWifiNetwork(evidence.wifi());
         record.setCheckOutLatitude(verifiedLocation.latitude());
         record.setCheckOutLongitude(verifiedLocation.longitude());
         record.setCheckOutGpsAccuracyMeters(location.getAccuracyMeters());
@@ -114,6 +128,29 @@ public class AttendanceServiceImpl implements AttendanceService {
         record.setWorkingMinutes((int) minutes);
         AttendanceRecord saved = attendanceRecords.save(record);
         return response(saved, "Check-out thành công.");
+    }
+
+    // Chọn địa điểm phía server trước khi kiểm tra GPS. ID cấu hình là ID work_locations, không phải Wi-Fi network ID.
+    // Wi-Fi bật thì dùng luồng xác minh IP hiện có. Tạm tắt thì lấy địa điểm cố định, đang hoạt động từ DB.
+    // Hàm chỉ đọc và xác minh; caller lưu bằng chứng sau khi kiểm tra trạng thái công thành công.
+    private AttendanceEvidence verifyAttendanceEvidence(AttendanceLocationRequest location, HttpServletRequest request) {
+        WorkLocationWifiNetwork network = null;
+        WorkLocation workLocation;
+        if (properties.isWifiVerificationEnabled()) {
+            VerifiedCompanyWifi wifi = wifiVerifier.verify(request);
+            network = wifi.network();
+            workLocation = network.getWorkLocation();
+        } else {
+            workLocation = workLocations.findById(properties.getGpsWorkLocationId())
+                    .filter(candidate -> Boolean.TRUE.equals(candidate.getIsActive()))
+                    .orElseThrow(() -> new IllegalStateException("Địa điểm xác minh GPS chưa được cấu hình hoặc đã vô hiệu hóa."));
+        }
+        // Luôn dùng cùng bộ kiểm tra tọa độ, khoảng cách, độ chính xác và thời điểm GPS cho cả hai chế độ.
+        VerifiedWorkLocation gps = workLocationVerifier.verify(location, workLocation);
+        return new AttendanceEvidence(workLocation, network, gps);
+    }
+
+    private record AttendanceEvidence(WorkLocation workLocation, WorkLocationWifiNetwork wifi, VerifiedWorkLocation gps) {
     }
 
     @Override
