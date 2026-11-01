@@ -56,6 +56,18 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional
+    // accountId lấy từ phiên, notificationId là notifications.id; ghép cả hai để không tiết lộ thông báo của người khác.
+    // UPDATE luôn ghi false/null kể cả đã chưa đọc: DB quyết định thứ tự khi chạy cùng read-all, không lệ thuộc snapshot cũ.
+    // Gọi lặp vẫn cùng kết quả; không đổi nội dung hay event_key và không tạo thông báo mới.
+    public NotificationResponse markMyNotificationUnread(Long accountId, Long notificationId) {
+        if (notifications.markUnread(notificationId, accountId) == 0) {
+            throw new ResourceNotFoundException("NOTIFICATION_NOT_FOUND", "Không tìm thấy thông báo.");
+        }
+        return toResponse(findOwned(notificationId, accountId));
+    }
+
+    @Override
+    @Transactional
     public int markAllMyNotificationsRead(Long accountId) {
         return notifications.markAllRead(accountId, OffsetDateTime.now());
     }

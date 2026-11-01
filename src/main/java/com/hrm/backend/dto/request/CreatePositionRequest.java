@@ -20,4 +20,9 @@ public class CreatePositionRequest {
     @Min(value = 1, message = "Cấp bậc chức vụ phải từ 1 đến 10.")
     @Max(value = 10, message = "Cấp bậc chức vụ phải từ 1 đến 10.")
     private Integer rankLevel;
+    @Size(max = 30, message = "Mã danh mục không được vượt quá 30 ký tự.")
+    private String code;
+
+    private com.hrm.backend.entity.enums.PositionStatus status;
+
 }

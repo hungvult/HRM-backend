@@ -23,6 +23,10 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
     boolean existsByUsernameIgnoreCase(String username);
     boolean existsByEmailIgnoreCase(String email);
 
-    @Query("SELECT a FROM Account a WHERE (:keyword = '' OR LOWER(a.username) LIKE LOWER(CONCAT('%', :keyword, '%')) OR LOWER(a.email) LIKE LOWER(CONCAT('%', :keyword, '%'))) AND (:status IS NULL OR a.status = :status) AND (:roleCode = '' OR EXISTS (SELECT ar FROM AccountRole ar WHERE ar.account = a AND ar.role.code = :roleCode))")
+    @Query("SELECT a FROM Account a LEFT JOIN a.employee e WHERE (:keyword = '' OR LOWER(a.username) LIKE LOWER(CONCAT('%', :keyword, '%')) OR LOWER(a.email) LIKE LOWER(CONCAT('%', :keyword, '%')) OR LOWER(e.fullName) LIKE LOWER(CONCAT('%', :keyword, '%'))) AND (:status IS NULL OR a.status = :status) AND (:roleCode = '' OR EXISTS (SELECT ar FROM AccountRole ar WHERE ar.account = a AND ar.role.code = :roleCode))")
     Page<Account> search(@Param("keyword") String keyword, @Param("status") AccountStatus status, @Param("roleCode") String roleCode, Pageable pageable);
+    // Khóa chung các lượt đổi role để hai Admin không cùng gỡ Admin cuối cùng.
+    @Query(value = "SELECT 1 FROM pg_advisory_xact_lock(736003)", nativeQuery = true)
+    Integer lockRoleChanges();
+
 }

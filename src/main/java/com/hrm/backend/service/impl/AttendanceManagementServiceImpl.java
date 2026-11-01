@@ -171,7 +171,8 @@ public class AttendanceManagementServiceImpl implements AttendanceManagementServ
         return employeeAssignments.stream()
                 .filter(assignment -> !assignment.getEffectiveFrom().isAfter(record.getWorkDate()))
                 .filter(assignment -> assignment.getEffectiveTo() == null || !assignment.getEffectiveTo().isBefore(record.getWorkDate()))
-                .max(Comparator.comparing(EmployeeAssignment::getEffectiveFrom))
+                // Đồng nhất bản cuối trong ngày với truy vấn danh sách và kiểm quyền chi tiết.
+                .max(Comparator.comparing(EmployeeAssignment::getEffectiveFrom).thenComparing(EmployeeAssignment::getId))
                 .orElse(null);
     }
 

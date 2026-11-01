@@ -14,6 +14,7 @@ import com.hrm.backend.entity.enums.AttendanceStatus;
 import com.hrm.backend.exception.AuthException;
 import com.hrm.backend.repository.AttendanceRecordRepository;
 import com.hrm.backend.repository.EmployeeRepository;
+import com.hrm.backend.repository.WorkLocationRepository;
 import com.hrm.backend.service.CompanyWifiVerifier;
 import com.hrm.backend.service.VerifiedCompanyWifi;
 import com.hrm.backend.service.VerifiedWorkLocation;
@@ -41,6 +42,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class AttendanceServiceImplTest {
 
@@ -49,6 +52,8 @@ class AttendanceServiceImplTest {
     private final CompanyWifiVerifier wifiVerifier = mock(CompanyWifiVerifier.class);
     private final WorkLocationVerifier workLocationVerifier = mock(WorkLocationVerifier.class);
     private final HttpServletRequest request = mock(HttpServletRequest.class);
+    private final WorkLocationRepository workLocations = mock(WorkLocationRepository.class);
+    private AttendanceProperties properties;
     private AttendanceServiceImpl service;
     private Employee employee;
     private WorkLocationWifiNetwork wifiNetwork;
@@ -56,10 +61,10 @@ class AttendanceServiceImplTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        AttendanceProperties properties = new AttendanceProperties();
+        properties = new AttendanceProperties();
         properties.setCompanyTimezone("Asia/Ho_Chi_Minh");
         Clock fixedClock = Clock.fixed(Instant.parse("2026-10-06T17:30:00Z"), ZoneOffset.UTC);
-        service = new AttendanceServiceImpl(employees, attendanceRecords, wifiVerifier, workLocationVerifier, properties, fixedClock);
+        service = new AttendanceServiceImpl(employees, attendanceRecords, wifiVerifier, workLocationVerifier, properties, fixedClock, workLocations);
 
         employee = Employee.builder().id(10L).employmentStatus(EmploymentStatus.WORKING).build();
         WorkLocation workLocation = WorkLocation.builder().id(2L).name("Trụ sở").isActive(true).build();
@@ -84,6 +89,259 @@ class AttendanceServiceImplTest {
             }
             return record;
         });
+    }
+
+    @Test
+    void preCheckVerifiesEvidenceWithoutLockingOrReadingAttendance() {
+        var response = service.preCheck(1L, location, request);
+        assertEquals(true, response.eligible());
+        assertEquals("AND", response.verificationMode());
+        assertEquals(true, response.wifiVerified());
+        assertEquals(true, response.gpsVerified());
+        assertEquals("2026-10-07T00:30+07:00", response.verifiedAt().toString());
+        verify(employees, never()).findByIdForUpdate(any());
+        verifyNoInteractions(attendanceRecords);
+    }
+
+    @Test
+    void preCheckOrAllowsWifiWithoutGps() {
+        properties.setVerificationMode(AttendanceProperties.VerificationMode.OR);
+        var response = service.preCheck(1L, new AttendanceLocationRequest(null, null, null, null), request);
+        assertEquals("OR", response.verificationMode());
+        assertEquals(true, response.wifiVerified());
+        assertEquals(false, response.gpsVerified());
+        verifyNoInteractions(workLocationVerifier, attendanceRecords);
+    }
+
+    @Test
+    void preCheckOrFallsBackToVerifiedGps() {
+        properties.setVerificationMode(AttendanceProperties.VerificationMode.OR);
+        when(wifiVerifier.verify(request)).thenThrow(new AuthException("ATTENDANCE_INVALID_COMPANY_WIFI", "Sai mạng", 403));
+        when(workLocations.findById(properties.getGpsWorkLocationId())).thenReturn(Optional.of(wifiNetwork.getWorkLocation()));
+        var response = service.preCheck(1L, location, request);
+        assertEquals(false, response.wifiVerified());
+        assertEquals(true, response.gpsVerified());
+        verifyNoInteractions(attendanceRecords);
+    }
+
+    @Test
+    void preCheckGpsOnlyDoesNotUseWifi() {
+        properties.setWifiVerificationEnabled(false);
+        when(workLocations.findById(properties.getGpsWorkLocationId())).thenReturn(Optional.of(wifiNetwork.getWorkLocation()));
+        var response = service.preCheck(1L, location, request);
+        assertEquals("GPS_ONLY", response.verificationMode());
+        assertEquals(false, response.wifiVerified());
+        assertEquals(true, response.gpsVerified());
+        verifyNoInteractions(wifiVerifier, attendanceRecords);
+    }
+
+    @Test
+    void preCheckRejectsInactiveEmployeeBeforeEvidenceAndDoesNotLock() {
+        employee.setEmploymentStatus(EmploymentStatus.TERMINATED);
+        var error = assertThrows(AuthException.class, () -> service.preCheck(1L, location, request));
+        assertEquals("ATTENDANCE_EMPLOYEE_INACTIVE", error.getCode());
+        verify(employees, never()).findByIdForUpdate(any());
+        verifyNoInteractions(wifiVerifier, workLocationVerifier, attendanceRecords);
+    }
+
+    @Test
+    void preCheckDoesNotHideConfigurationErrors() {
+        properties.setVerificationMode(AttendanceProperties.VerificationMode.OR);
+        when(wifiVerifier.verify(request)).thenThrow(new IllegalStateException("Invalid trusted proxy"));
+        assertThrows(IllegalStateException.class, () -> service.preCheck(1L, location, request));
+        verifyNoInteractions(workLocationVerifier, attendanceRecords);
+    }
+
+    @Test
+    void preCheckRejectsBothInvalidEvidenceInOrMode() {
+        properties.setVerificationMode(AttendanceProperties.VerificationMode.OR);
+        when(wifiVerifier.verify(request)).thenThrow(new AuthException("ATTENDANCE_INVALID_COMPANY_WIFI", "Sai mạng", 403));
+        when(workLocations.findById(properties.getGpsWorkLocationId())).thenReturn(Optional.of(wifiNetwork.getWorkLocation()));
+        when(workLocationVerifier.verify(location, wifiNetwork.getWorkLocation()))
+                .thenThrow(new AuthException("ATTENDANCE_OUTSIDE_WORK_LOCATION", "Ngoài phạm vi", 403));
+        assertEquals("ATTENDANCE_OUTSIDE_WORK_LOCATION", assertThrows(AuthException.class,
+                () -> service.preCheck(1L, location, request)).getCode());
+        verifyNoInteractions(attendanceRecords);
+    }
+
+    @Test
+    void passedPreCheckNeverAuthorizesCheckInOrCheckOutAfterNetworkChanges() {
+        service.preCheck(1L, location, request);
+        when(wifiVerifier.verify(request)).thenThrow(new AuthException("ATTENDANCE_INVALID_COMPANY_WIFI", "Sai mạng", 403));
+        assertEquals("ATTENDANCE_INVALID_COMPANY_WIFI", assertThrows(AuthException.class,
+                () -> service.checkIn(1L, location, request)).getCode());
+        assertEquals("ATTENDANCE_INVALID_COMPANY_WIFI", assertThrows(AuthException.class,
+                () -> service.checkOut(1L, location, request)).getCode());
+        verifyNoInteractions(attendanceRecords);
+    }
+
+    @Test
+    void orWifiOnlyAcceptsEmptyGpsAndNeverInventsCoordinates() {
+        properties.setVerificationMode(AttendanceProperties.VerificationMode.OR);
+        var noGps = new AttendanceLocationRequest(null, null, null, null);
+        service.checkIn(1L, noGps, request);
+        ArgumentCaptor<AttendanceRecord> saved = ArgumentCaptor.forClass(AttendanceRecord.class);
+        verify(attendanceRecords).save(saved.capture());
+        assertEquals(wifiNetwork, saved.getValue().getCheckInWifiNetwork());
+        assertNull(saved.getValue().getCheckInLatitude());
+        assertNull(saved.getValue().getCheckInLongitude());
+        assertNull(saved.getValue().getCheckInGpsAccuracyMeters());
+        assertNull(saved.getValue().getCheckInLocationCapturedAt());
+        assertNull(saved.getValue().getCheckInLocationDistanceMeters());
+        verifyNoInteractions(workLocationVerifier, workLocations);
+    }
+
+    @Test
+    void orWifiAcceptsOutsideOrStaleGpsWithoutStoringIt() {
+        properties.setVerificationMode(AttendanceProperties.VerificationMode.OR);
+        for (String code : List.of("ATTENDANCE_OUTSIDE_WORK_LOCATION", "ATTENDANCE_INVALID_GPS")) {
+            org.mockito.Mockito.doThrow(new AuthException(code, "GPS không đạt", 403))
+                    .when(workLocationVerifier).verify(location, wifiNetwork.getWorkLocation());
+            service.checkIn(1L, location, request);
+        }
+        ArgumentCaptor<AttendanceRecord> saved = ArgumentCaptor.forClass(AttendanceRecord.class);
+        org.mockito.Mockito.verify(attendanceRecords, org.mockito.Mockito.times(2)).save(saved.capture());
+        saved.getAllValues().forEach(r -> { assertNull(r.getCheckInLatitude()); assertNull(r.getCheckInGpsAccuracyMeters()); });
+    }
+
+    @Test
+    void orFallsBackToConfiguredGpsOnlyForInvalidWifi() {
+        properties.setVerificationMode(AttendanceProperties.VerificationMode.OR);
+        when(wifiVerifier.verify(request)).thenThrow(new AuthException("ATTENDANCE_INVALID_COMPANY_WIFI", "Sai mạng", 403));
+        when(workLocations.findById(1L)).thenReturn(Optional.of(wifiNetwork.getWorkLocation()));
+        service.checkIn(1L, location, request);
+        ArgumentCaptor<AttendanceRecord> saved = ArgumentCaptor.forClass(AttendanceRecord.class);
+        verify(attendanceRecords).save(saved.capture());
+        assertNull(saved.getValue().getCheckInWifiSsid());
+        assertNull(saved.getValue().getCheckInWifiNetwork());
+        assertEquals(location.getLatitude(), saved.getValue().getCheckInLatitude());
+    }
+
+    @Test
+    void orRejectsBothInvalidAndDoesNotSwallowConfigurationOrDatabaseErrors() {
+        properties.setVerificationMode(AttendanceProperties.VerificationMode.OR);
+        when(wifiVerifier.verify(request)).thenThrow(new AuthException("ATTENDANCE_INVALID_COMPANY_WIFI", "Sai mạng", 403));
+        var noGps = new AttendanceLocationRequest(null, null, null, null);
+        assertEquals("ATTENDANCE_INVALID_COMPANY_WIFI", assertThrows(AuthException.class,
+                () -> service.checkIn(1L, noGps, request)).getCode());
+        when(workLocations.findById(1L)).thenReturn(Optional.of(wifiNetwork.getWorkLocation()));
+        when(workLocationVerifier.verify(location, wifiNetwork.getWorkLocation()))
+                .thenThrow(new AuthException("ATTENDANCE_OUTSIDE_WORK_LOCATION", "Ngoài vùng", 403));
+        assertEquals("ATTENDANCE_OUTSIDE_WORK_LOCATION", assertThrows(AuthException.class,
+                () -> service.checkIn(1L, location, request)).getCode());
+        org.mockito.Mockito.doThrow(new IllegalStateException("Cấu hình mạng lỗi")).when(wifiVerifier).verify(request);
+        assertThrows(IllegalStateException.class, () -> service.checkIn(1L, location, request));
+        org.mockito.Mockito.doThrow(new org.springframework.dao.DataAccessResourceFailureException("DB down")).when(wifiVerifier).verify(request);
+        assertThrows(org.springframework.dao.DataAccessException.class, () -> service.checkIn(1L, location, request));
+        verify(attendanceRecords, never()).save(any());
+    }
+
+    @Test
+    void orWifiOnlyCheckoutPreservesCheckinAndConflictRules() {
+        properties.setVerificationMode(AttendanceProperties.VerificationMode.OR);
+        var noGps = new AttendanceLocationRequest(null, null, null, null);
+        assertEquals("ATTENDANCE_CHECK_IN_REQUIRED", assertThrows(AuthException.class,
+                () -> service.checkOut(1L, noGps, request)).getCode());
+        AttendanceRecord existing = AttendanceRecord.builder().id(100L).employee(employee)
+                .checkInAt(java.time.OffsetDateTime.parse("2026-10-06T14:00:00Z"))
+                .checkInLatitude(location.getLatitude()).build();
+        when(attendanceRecords.findByEmployeeIdAndWorkDateForUpdate(eq(10L), any())).thenReturn(Optional.of(existing));
+        service.checkOut(1L, noGps, request);
+        assertEquals(210, existing.getWorkingMinutes());
+        assertNull(existing.getCheckOutLatitude());
+        assertEquals(location.getLatitude(), existing.getCheckInLatitude());
+        assertEquals("ATTENDANCE_ALREADY_CHECKED_OUT", assertThrows(AuthException.class,
+                () -> service.checkOut(1L, noGps, request)).getCode());
+        assertEquals("ATTENDANCE_ALREADY_CHECKED_IN", assertThrows(AuthException.class,
+                () -> service.checkIn(1L, noGps, request)).getCode());
+    }
+
+    @Test
+    void andRemainsDefaultAndRequiresGpsEvenOnVerifiedWifi() {
+        assertEquals(AttendanceProperties.VerificationMode.AND, properties.getVerificationMode());
+        var noGps = new AttendanceLocationRequest(null, null, null, null);
+        when(workLocationVerifier.verify(noGps, wifiNetwork.getWorkLocation()))
+                .thenThrow(new AuthException("ATTENDANCE_INVALID_GPS", "Thiếu GPS", 400));
+        assertEquals("ATTENDANCE_INVALID_GPS", assertThrows(AuthException.class,
+                () -> service.checkIn(1L, noGps, request)).getCode());
+        verify(attendanceRecords, never()).save(any());
+    }
+
+    @Test
+    void gpsOnlyCheckInIgnoresWifiAndStoresOnlyVerifiedGpsEvidence() {
+        properties.setWifiVerificationEnabled(false);
+        properties.setGpsWorkLocationId(2L);
+        when(workLocations.findById(2L)).thenReturn(Optional.of(wifiNetwork.getWorkLocation()));
+        when(attendanceRecords.findByEmployeeIdAndWorkDateForUpdate(eq(10L), any())).thenReturn(Optional.empty());
+
+        service.checkIn(1L, location, request);
+
+        verifyNoInteractions(wifiVerifier);
+        ArgumentCaptor<AttendanceRecord> captor = ArgumentCaptor.forClass(AttendanceRecord.class);
+        verify(attendanceRecords).save(captor.capture());
+        assertNull(captor.getValue().getCheckInWifiNetwork());
+        assertNull(captor.getValue().getCheckInWifiSsid());
+        assertEquals(wifiNetwork.getWorkLocation(), captor.getValue().getCheckInWorkLocation());
+        assertEquals(24, captor.getValue().getCheckInLocationDistanceMeters());
+    }
+
+    @Test
+    void gpsOnlyCheckOutPreservesExistingCheckInWifiAndDoesNotInventCheckOutWifi() {
+        properties.setWifiVerificationEnabled(false);
+        when(workLocations.findById(1L)).thenReturn(Optional.of(wifiNetwork.getWorkLocation()));
+        AttendanceRecord existing = AttendanceRecord.builder().id(100L).employee(employee)
+                .workDate(LocalDate.of(2026, 10, 7))
+                .checkInAt(java.time.OffsetDateTime.parse("2026-10-06T14:00:00Z"))
+                .checkInWifiNetwork(wifiNetwork).checkInWifiSsid("HRM-CORP").build();
+        when(attendanceRecords.findByEmployeeIdAndWorkDateForUpdate(eq(10L), any())).thenReturn(Optional.of(existing));
+
+        service.checkOut(1L, location, request);
+
+        verifyNoInteractions(wifiVerifier);
+        assertNull(existing.getCheckOutWifiNetwork());
+        assertNull(existing.getCheckOutWifiSsid());
+        assertEquals(wifiNetwork, existing.getCheckInWifiNetwork());
+        assertEquals(210, existing.getWorkingMinutes());
+    }
+
+    @Test
+    void gpsOnlyRejectsInvalidGpsWithoutSavingAttendance() {
+        properties.setWifiVerificationEnabled(false);
+        when(workLocations.findById(1L)).thenReturn(Optional.of(wifiNetwork.getWorkLocation()));
+        when(workLocationVerifier.verify(location, wifiNetwork.getWorkLocation()))
+                .thenThrow(new AuthException("ATTENDANCE_INVALID_GPS", "Vị trí GPS đã quá cũ.", 400));
+
+        assertEquals(400, assertThrows(AuthException.class, () -> service.checkIn(1L, location, request)).getStatus());
+
+        verify(attendanceRecords, never()).save(any());
+        verifyNoInteractions(wifiVerifier);
+    }
+
+    @Test
+    void gpsOnlyRejectsMissingOrInactiveConfiguredLocation() {
+        properties.setWifiVerificationEnabled(false);
+        when(workLocations.findById(1L)).thenReturn(Optional.empty());
+        assertThrows(IllegalStateException.class, () -> service.checkIn(1L, location, request));
+        wifiNetwork.getWorkLocation().setIsActive(false);
+        when(workLocations.findById(1L)).thenReturn(Optional.of(wifiNetwork.getWorkLocation()));
+        assertThrows(IllegalStateException.class, () -> service.checkOut(1L, location, request));
+        verifyNoInteractions(workLocationVerifier, wifiVerifier);
+        verify(attendanceRecords, never()).save(any());
+    }
+
+    @Test
+    void gpsOnlyStillRejectsDuplicateCheckInAndCheckoutBeforeCheckIn() {
+        properties.setWifiVerificationEnabled(false);
+        when(workLocations.findById(1L)).thenReturn(Optional.of(wifiNetwork.getWorkLocation()));
+        when(attendanceRecords.findByEmployeeIdAndWorkDateForUpdate(eq(10L), any())).thenReturn(Optional.empty());
+        assertEquals("ATTENDANCE_CHECK_IN_REQUIRED", assertThrows(AuthException.class,
+                () -> service.checkOut(1L, location, request)).getCode());
+        AttendanceRecord existing = AttendanceRecord.builder().employee(employee)
+                .checkInAt(java.time.OffsetDateTime.parse("2026-10-06T14:00:00Z")).build();
+        when(attendanceRecords.findByEmployeeIdAndWorkDateForUpdate(eq(10L), any())).thenReturn(Optional.of(existing));
+        assertEquals("ATTENDANCE_ALREADY_CHECKED_IN", assertThrows(AuthException.class,
+                () -> service.checkIn(1L, location, request)).getCode());
+        verify(attendanceRecords, never()).save(any());
     }
 
     @Test

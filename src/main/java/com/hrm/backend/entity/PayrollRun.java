@@ -59,9 +59,8 @@ public class PayrollRun {
     @Column(name = "published_at")
     private OffsetDateTime publishedAt;
 
-    /** @deprecated Kept only to read legacy rows; MVP always writes revision 1. */
-    @Deprecated
-    @Column(name = "revision", nullable = false, updatable = false)
+    /** Tăng sau mỗi lần HR xác nhận tạo lại bảng chưa công bố. */
+    @Column(name = "revision", nullable = false)
     private Integer revision = 1;
 
     /** @deprecated The MVP has no replacement/revision flow. */

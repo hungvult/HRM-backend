@@ -8,6 +8,8 @@ import java.util.Optional;
 
 @Repository
 public interface PayrollItemRepository extends JpaRepository<PayrollItem, Long> {
+    void deleteByPayrollRunId(Long payrollRunId);
+
     boolean existsBySalaryProfileId(Long salaryProfileId);
 
     Optional<PayrollItem> findFirstBySalaryProfileIdOrderByPayrollRunPayrollYearDescPayrollRunPayrollMonthDesc(

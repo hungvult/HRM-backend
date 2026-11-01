@@ -95,4 +95,6 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
             @Param("profileState") String profileState,
             @Param("today") java.time.LocalDate today,
             Pageable pageable);
+    boolean existsByEmployeeCodeIgnoreCase(String employeeCode);
+
 }

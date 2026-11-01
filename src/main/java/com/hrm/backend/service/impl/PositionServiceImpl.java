@@ -36,22 +36,28 @@ public class PositionServiceImpl implements PositionService {
     private final AccountRepository accounts;
     private final AuditLogRepository audits;
 
+    /** HR tạo position: mã từ form, actorAccountId là accounts.id của người thực hiện.
+     * Kiểm mã/tên theo trạng thái rồi ghi danh mục và audit cùng transaction; client cũ bỏ trạng thái vẫn ACTIVE. */
     @Override
     @Transactional
     public PositionResponse createPosition(Long actorAccountId, CreatePositionRequest request) {
         String name = request.getName().trim();
-        if (positions.existsByNameIgnoreCaseAndStatus(name, PositionStatus.ACTIVE)) {
+        PositionStatus requestedStatus = request.getStatus() == null ? PositionStatus.ACTIVE : request.getStatus();
+        if (requestedStatus == PositionStatus.ACTIVE && positions.existsByNameIgnoreCaseAndStatus(name, PositionStatus.ACTIVE)) {
             throw conflict("POSITION_NAME_ALREADY_EXISTS", "Tên chức vụ đang được sử dụng.");
         }
+        // Code gửi từ Web được kiểm trùng; client cũ không gửi thì dùng bộ sinh CV hiện có.
+        String code = request.getCode() == null || request.getCode().isBlank() ? null : request.getCode().trim().toUpperCase(Locale.ROOT);
+        if (code != null && positions.existsByCodeIgnoreCase(code)) throw conflict("POSITION_CODE_ALREADY_EXISTS", "Mã chức vụ đã tồn tại.");
         Account actor = actor(actorAccountId);
         Position position = positions.saveAndFlush(Position.builder()
                 .code(temporaryCode())
                 .name(name)
                 .description(normalizeDescription(request.getDescription()))
                 .rankLevel(request.getRankLevel())
-                .status(PositionStatus.ACTIVE)
+                .status(requestedStatus)
                 .build());
-        position.setCode(generateCode(position.getId()));
+        position.setCode(code == null ? generateCode(position.getId()) : code);
         position = positions.save(position);
         audits.save(AuditLog.builder().actorAccount(actor).action("POSITION_CREATED").entityType("POSITION")
                 .entityId(position.getId()).newData(positionAuditData(position)).build());
@@ -85,16 +91,25 @@ public class PositionServiceImpl implements PositionService {
                 .hasNext(positionsPage.hasNext()).build();
     }
 
+    /** HR sửa danh mục theo PK của position; khóa cùng bản ghi với phân công/xóa.
+     * Kiểm mã/tên trùng rồi lưu mã, tên, mô tả, trạng thái và audit nguyên khối; không đổi các FK lịch sử. */
     @Override
     @Transactional
     public PositionResponse updatePosition(Long actorAccountId, Long positionId, UpdatePositionRequest request) {
-        Position position = findPosition(positionId);
+        Position position = liveForUpdate(positionId);
         String name = request.getName().trim();
-        if (position.getStatus() == PositionStatus.ACTIVE
+        PositionStatus requestedStatus = request.getStatus() == null ? position.getStatus() : request.getStatus();
+        if (requestedStatus == PositionStatus.ACTIVE
                 && positions.existsByNameIgnoreCaseAndStatusAndIdNot(name, PositionStatus.ACTIVE, positionId)) {
             throw conflict("POSITION_NAME_ALREADY_EXISTS", "Tên chức vụ đang được sử dụng.");
         }
         String oldData = positionAuditData(position);
+        // Ghi mã/trạng thái cùng tên/cấp bậc để form không lưu một nửa khi lỗi.
+        String updatedCode = request.getCode() == null ? position.getCode() : request.getCode().trim().toUpperCase(Locale.ROOT);
+        if (updatedCode.isBlank()) throw new AuthException("VALIDATION_ERROR", "Mã chức vụ là bắt buộc.", 400);
+        if (positions.existsByCodeIgnoreCaseAndIdNot(updatedCode, positionId)) throw conflict("POSITION_CODE_ALREADY_EXISTS", "Mã chức vụ đã tồn tại.");
+        position.setCode(updatedCode);
+        position.setStatus(requestedStatus);
         position.setName(name);
         position.setDescription(normalizeDescription(request.getDescription()));
         position.setRankLevel(request.getRankLevel());
@@ -105,17 +120,19 @@ public class PositionServiceImpl implements PositionService {
         return toResponse(position);
     }
 
+    /** HR xác nhận đổi trạng thái danh mục; khóa PK position rồi kiểm trạng thái và tên khi kích hoạt.
+     * INACTIVE giữ nguyên employee_assignments hiện có, chặn lượt phân công mới và ghi trạng thái trước/sau vào audit. */
     @Override
     @Transactional
     public PositionResponse updatePositionStatus(Long actorAccountId, Long positionId, UpdatePositionStatusRequest request) {
-        Position position = findPosition(positionId);
+        Position position = liveForUpdate(positionId);
         PositionStatus newStatus = request.getStatus();
         if (position.getStatus() == newStatus) {
             throw new AuthException("POSITION_STATUS_UNCHANGED", "Trạng thái mới phải khác trạng thái hiện tại.", 400);
         }
-        if (newStatus == PositionStatus.INACTIVE && assignments.existsByPositionIdAndIsCurrentTrue(positionId)) {
-            throw conflict("POSITION_HAS_ACTIVE_ASSIGNMENTS",
-                    "Không thể vô hiệu hóa chức vụ đang có nhân viên được phân công.");
+        // Vô hiệu hóa giữ phân công cũ; kích hoạt lại phải tránh trùng tên đang hiệu lực.
+        if (newStatus == PositionStatus.ACTIVE && positions.existsByNameIgnoreCaseAndStatusAndIdNot(position.getName(), PositionStatus.ACTIVE, positionId)) {
+            throw conflict("POSITION_NAME_ALREADY_EXISTS", "Tên danh mục đang được sử dụng.");
         }
         String oldData = statusAuditData(position.getStatus(), null);
         position.setStatus(newStatus);
@@ -135,7 +152,7 @@ public class PositionServiceImpl implements PositionService {
     }
 
     private Position findPosition(Long positionId) {
-        return positions.findById(positionId)
+        return positions.findById(positionId).filter(x -> x.getDeletedAt() == null)
                 .orElseThrow(() -> new ResourceNotFoundException("POSITION_NOT_FOUND", "Không tìm thấy chức vụ."));
     }
 
@@ -155,7 +172,14 @@ public class PositionServiceImpl implements PositionService {
     }
 
     private String generateCode(Long positionId) {
-        return String.format(Locale.ROOT, "CV%06d", positionId);
+        // Giữ tương thích client không gửi mã, kể cả khi mã CV theo ID đã được HR nhập tay.
+        String base = String.format(Locale.ROOT, "CV%06d", positionId);
+        String candidate = base;
+        for (int suffix = 2; positions.existsByCodeIgnoreCase(candidate); suffix++) {
+            if (suffix > 1000) throw conflict("POSITION_CODE_ALREADY_EXISTS", "Chưa thể cấp mã chức vụ. Vui lòng thử lại.");
+            candidate = base + "-" + suffix;
+        }
+        return candidate;
     }
 
     private String normalizeDescription(String description) {
@@ -191,4 +215,27 @@ public class PositionServiceImpl implements PositionService {
     private AuthException conflict(String code, String message) {
         return new AuthException(code, message, 409);
     }
+    /** Dùng khi HR ghi danh mục: id thuộc positions; khóa tới hết transaction để không đua với phân công/xóa. */
+    private Position liveForUpdate(Long id) {
+        return positions.findLiveByIdForUpdate(id).orElseThrow(() ->
+                new ResourceNotFoundException("POSITION_NOT_FOUND", "Không tìm thấy danh mục."));
+    }
+
+    /** Chỉ xóa khi không còn phân công hiện hành; giữ nguyên FK lịch sử, ghi audit cùng transaction. */
+    @Override
+    @Transactional
+    public void deletePosition(Long actorAccountId, Long id) {
+        Position item = liveForUpdate(id);
+        if (assignments.existsByPositionIdAndIsCurrentTrue(id)) {
+            throw conflict("POSITION_HAS_ACTIVE_ASSIGNMENTS", "Không thể xóa danh mục đang có nhân viên. Vui lòng phân công lại nhân viên hoặc vô hiệu hóa danh mục.");
+        }
+        String before = positionAuditData(item);
+        item.setStatus(PositionStatus.INACTIVE);
+        item.setDeletedAt(java.time.OffsetDateTime.now());
+        positions.saveAndFlush(item);
+        audits.save(AuditLog.builder().actorAccount(accounts.getReferenceById(actorAccountId))
+                .action("POSITION_DELETED").entityType("POSITION").entityId(id)
+                .oldData(before).newData(positionAuditData(item)).build());
+    }
+
 }

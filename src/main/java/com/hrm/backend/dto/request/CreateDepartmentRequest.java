@@ -17,4 +17,6 @@ public class CreateDepartmentRequest {
 
     @Size(max = 10_000, message = "Mô tả không được vượt quá 10000 ký tự.")
     private String description;
+    private com.hrm.backend.entity.enums.DepartmentStatus status;
+
 }

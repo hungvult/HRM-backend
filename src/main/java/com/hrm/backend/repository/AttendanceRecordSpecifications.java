@@ -65,9 +65,21 @@ public final class AttendanceRecordSpecifications {
                                                         Long scopeId) {
         Subquery<Integer> subquery = query.subquery(Integer.class);
         Root<EmployeeAssignment> assignment = subquery.from(EmployeeAssignment.class);
+        // Cùng ngày chỉ bản cuối theo ngày/ID quyết định quyền xem và phòng ban, giống API chi tiết.
+        Subquery<Integer> newerQuery = subquery.subquery(Integer.class);
+        Root<EmployeeAssignment> newer = newerQuery.from(EmployeeAssignment.class);
+        newerQuery.select(criteriaBuilder.literal(1)).where(
+                criteriaBuilder.equal(newer.get("employee"), assignment.get("employee")),
+                criteriaBuilder.lessThanOrEqualTo(newer.get("effectiveFrom"), attendance.get("workDate")),
+                criteriaBuilder.or(criteriaBuilder.isNull(newer.get("effectiveTo")),
+                        criteriaBuilder.greaterThanOrEqualTo(newer.get("effectiveTo"), attendance.get("workDate"))),
+                criteriaBuilder.or(criteriaBuilder.greaterThan(newer.get("effectiveFrom"), assignment.get("effectiveFrom")),
+                        criteriaBuilder.and(criteriaBuilder.equal(newer.get("effectiveFrom"), assignment.get("effectiveFrom")),
+                                criteriaBuilder.greaterThan(newer.get("id"), assignment.get("id")))));
         subquery.select(criteriaBuilder.literal(1));
         subquery.where(
                 criteriaBuilder.equal(assignment.get("employee"), attendance.get("employee")),
+                criteriaBuilder.not(criteriaBuilder.exists(newerQuery)),
                 criteriaBuilder.equal(assignment.get(assignmentAssociation).get("id"), scopeId),
                 criteriaBuilder.lessThanOrEqualTo(assignment.get("effectiveFrom"), attendance.get("workDate")),
                 criteriaBuilder.or(

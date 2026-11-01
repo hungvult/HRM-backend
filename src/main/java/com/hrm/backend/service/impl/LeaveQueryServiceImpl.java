@@ -38,6 +38,7 @@ public class LeaveQueryServiceImpl implements LeaveQueryService {
     private final LeaveRequestStatusHistoryRepository statusHistories;
     private final EmployeeRepository employees;
     private final AccessScopeService accessScope;
+    private final com.hrm.backend.service.LeaveAttachmentService attachmentService;
 
     @Override
     public List<LeaveTypeResponse> getActiveLeaveTypes() {
@@ -83,10 +84,12 @@ public class LeaveQueryServiceImpl implements LeaveQueryService {
     }
 
     @Override
+    // Dùng cho chi tiết đơn và kết quả hủy: id là leave_requests.id; quyền xem giữ đúng owner/HR/quản lý cũ.
+    // Sau kiểm tra quyền mới lấy lịch sử và metadata ảnh, không đọc bytea trong JSON và không ghi DB.
     public LeaveRequestDetailResponse getLeaveRequestDetail(Long accountId, Long leaveRequestId) {
         LeaveRequest request = leaveRequests.findWithEmployeeAndLeaveTypeById(leaveRequestId)
                 .orElseThrow(() -> new ResourceNotFoundException("LEAVE_REQUEST_NOT_FOUND", "Không tìm thấy đơn nghỉ phép."));
-        // Deliberately use the same scope policy as the management list endpoint.
+        // Dùng cùng phạm vi với danh sách quản lý; không trả metadata trước khi kiểm tra quyền.
         accessScope.requireCanReadLeaveRequest(accountId, request.getEmployee().getId());
         return toDetail(request, statusHistories.findByLeaveRequestIdOrderByChangedAtAscIdAsc(request.getId()));
     }
@@ -157,7 +160,8 @@ public class LeaveQueryServiceImpl implements LeaveQueryService {
                 .reviewedByEmployeeId(request.getReviewedByEmployee() == null ? null : request.getReviewedByEmployee().getId())
                 .reviewedAt(request.getReviewedAt()).rejectionReason(request.getRejectionReason())
                 .cancelledAt(request.getCancelledAt()).createdAt(request.getCreatedAt()).updatedAt(request.getUpdatedAt())
-                .statusHistory(histories.stream().map(this::toHistory).toList()).build();
+                .statusHistory(histories.stream().map(this::toHistory).toList())
+                .attachment(attachmentService.metadata(request.getId())).build();
     }
 
     private LeaveRequestStatusHistoryResponse toHistory(LeaveRequestStatusHistory history) {

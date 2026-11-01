@@ -10,6 +10,8 @@ import com.hrm.backend.repository.*;
 import com.hrm.backend.security.JwtService;
 import com.hrm.backend.service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -29,6 +31,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final HttpServletRequest request;
+    private final EntityManager entityManager;
 
     @Override
     @Transactional
@@ -43,9 +46,12 @@ public class AuthServiceImpl implements AuthService {
     }
     @Override
     @Transactional
+    // Cookie refresh trỏ tới một auth_sessions. Khóa và đọc lại phiên trước khi xoay token để logout không bị vượt qua.
     public LoginResponse refreshToken(String rawToken) {
         if (rawToken == null || rawToken.isBlank()) throw invalidRefreshToken();
         AuthSession old = authSessionRepository.findByRefreshTokenHash(hash(rawToken)).orElseThrow(this::invalidRefreshToken);
+        // Lượt khác có thể đã thu hồi phiên sau truy vấn trên. Refresh dưới khóa loại bỏ cả dữ liệu cũ trong persistence context.
+        entityManager.refresh(old, LockModeType.PESSIMISTIC_WRITE);
         OffsetDateTime now = OffsetDateTime.now();
         // Ưu tiên trả lỗi trạng thái account thay vì che thành refresh token invalid
         // khi session đã bị thu hồi do account bị khóa/vô hiệu hóa.
@@ -56,9 +62,32 @@ public class AuthServiceImpl implements AuthService {
     }
     @Override
     @Transactional
+    // accountId lấy từ người dùng xác thực; sessionId lấy từ JWT. Chỉ thu hồi đúng phiên của tài khoản này.
     public void logout(Long accountId, Long sessionId) {
-        if (sessionId == null) return;
-        authSessionRepository.findById(sessionId).ifPresent(s -> { if (s.getAccount().getId().equals(accountId) && s.getRevokedAt() == null) { s.setRevokedAt(OffsetDateTime.now()); s.setRevokeReason("LOGOUT"); audit(s.getAccount(), "AUTH_LOGOUT", "auth_sessions", s.getId()); } });
+        if (sessionId == null) throw invalidSession();
+        AuthSession session = authSessionRepository.findById(sessionId).orElseThrow(this::invalidSession);
+        if (!session.getAccount().getId().equals(accountId)) throw invalidSession();
+
+        // Dùng cùng khóa với refresh và đọc lại trạng thái dù bộ lọc JWT đã kiểm tra phiên trước đó.
+        entityManager.refresh(session, LockModeType.PESSIMISTIC_WRITE);
+        if (!session.getAccount().getId().equals(accountId)) throw invalidSession();
+        if (session.getRevokedAt() != null) {
+            // Hai lượt logout cùng phiên được phép hoàn tất; phiên đã xoay phải trả 401 để client hủy phiên mới.
+            if ("LOGOUT".equals(session.getRevokeReason())) return;
+            throw invalidSession();
+        }
+        OffsetDateTime now = OffsetDateTime.now();
+        if (!session.getExpiresAt().isAfter(now)) throw invalidSession();
+
+        // Giữ khóa tới khi transaction commit, ghi thu hồi và audit cùng transaction trước khi controller xóa cookie.
+        session.setRevokedAt(now);
+        session.setRevokeReason("LOGOUT");
+        audit(session.getAccount(), "AUTH_LOGOUT", "auth_sessions", session.getId());
+    }
+
+    // Logout gặp phiên đã xoay/không thuộc người dùng phải yêu cầu xác thực lại, tránh báo hủy thành công sai phiên.
+    private AuthException invalidSession() {
+        return new AuthException("AUTH_UNAUTHORIZED", "Phiên đăng nhập đã bị thu hồi hoặc không còn hợp lệ.", 401);
     }
     private LoginResponse issueTokens(Account account, String device, String agent) {
         OffsetDateTime now = OffsetDateTime.now(); String raw = jwtService.generateRefreshToken();

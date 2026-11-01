@@ -29,6 +29,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.MediaType;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ContentDisposition;
+import com.hrm.backend.dto.request.CancelLeaveRequest;
+import com.hrm.backend.service.LeaveAttachmentService;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.time.LocalDate;
@@ -43,10 +50,12 @@ public class LeaveRequestController {
     private final LeaveRequestCancellationService leaveRequestCancellationService;
     private final LeaveRequestApprovalService leaveRequestApprovalService;
     private final LeaveRequestRejectionService leaveRequestRejectionService;
+    private final LeaveAttachmentService attachmentService;
 
-    @PostMapping
+    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'MANAGER', 'EMPLOYEE')")
     @Operation(summary = "Gửi đơn nghỉ phép")
+    // Giữ JSON cho Web/app cũ; ID nhân viên luôn lấy từ phiên qua service, không nhận từ payload.
     public ResponseEntity<LeaveRequestSubmissionResponse> submitLeaveRequest(
             @AuthenticationPrincipal CustomUserDetails currentUser,
             @Valid @RequestBody CreateLeaveRequest request) {
@@ -56,13 +65,51 @@ public class LeaveRequestController {
                 .body(response);
     }
 
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'MANAGER', 'EMPLOYEE')")
+    @Operation(summary = "Gửi đơn nghỉ phép kèm một ảnh tùy chọn", description = "Part request là application/json; attachment là JPG/PNG/WebP tối đa 5 MB (5242880 byte).")
+    // Mobile gửi JSON ở part request và tối đa một ảnh; service kiểm tra ảnh trước khi ghi cùng transaction với đơn.
+    public ResponseEntity<LeaveRequestSubmissionResponse> submitMultipart(
+            @AuthenticationPrincipal CustomUserDetails currentUser,
+            @Valid @RequestPart("request") CreateLeaveRequest request,
+            @RequestPart(value = "attachment", required = false) MultipartFile attachment,
+            jakarta.servlet.http.HttpServletRequest httpRequest) {
+        // Chặn nhiều part cùng tên, tránh âm thầm chỉ nhận ảnh đầu và bỏ ảnh còn lại.
+        if (httpRequest instanceof org.springframework.web.multipart.MultipartHttpServletRequest multipart
+                && multipart.getFiles("attachment").size() > 1) {
+            throw new com.hrm.backend.exception.AuthException("LEAVE_ATTACHMENT_INVALID", "Mỗi đơn chỉ được có một ảnh minh chứng.", 400);
+        }
+        var response = leaveRequestSubmissionService.submit(currentUser.getAccount().getId(), request, attachment);
+        return ResponseEntity.created(ServletUriComponentsBuilder.fromCurrentRequestUri().path("/{id}")
+                .buildAndExpand(response.getId()).toUri()).body(response);
+    }
+
+    @GetMapping("/{id}/attachment")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'MANAGER', 'EMPLOYEE')")
+    @Operation(summary = "Đọc ảnh minh chứng theo cùng quyền xem đơn")
+    // id là leave_requests.id, không phải ID file công khai; service kiểm tra phạm vi trước khi tải bytea.
+    public ResponseEntity<byte[]> getAttachment(@PathVariable Long id,
+            @AuthenticationPrincipal CustomUserDetails currentUser) {
+        var image = attachmentService.read(currentUser.getAccount().getId(), id);
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType(image.getContentType()))
+                .contentLength(image.getSizeBytes())
+                .header(HttpHeaders.CACHE_CONTROL, "private, no-store")
+                .header("X-Content-Type-Options", "nosniff")
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
+                        .filename(image.getFileName(), java.nio.charset.StandardCharsets.UTF_8).build().toString())
+                .body(image.getData());
+    }
+
     @PostMapping("/{id}/cancel")
     @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'MANAGER', 'EMPLOYEE')")
     @Operation(summary = "Hủy đơn nghỉ phép")
+    // Body vắng giữ tương thích Web cũ; reason tùy chọn tối đa 1.000 ký tự được lưu ở lịch sử cùng giao dịch hủy.
     public ResponseEntity<LeaveRequestDetailResponse> cancelLeaveRequest(
             @PathVariable Long id,
-            @AuthenticationPrincipal CustomUserDetails currentUser) {
-        return ResponseEntity.ok(leaveRequestCancellationService.cancel(currentUser.getAccount().getId(), id));
+            @AuthenticationPrincipal CustomUserDetails currentUser,
+            @Valid @RequestBody(required = false) CancelLeaveRequest request) {
+        return ResponseEntity.ok(leaveRequestCancellationService.cancel(currentUser.getAccount().getId(), id,
+                request == null ? null : request.reason()));
     }
 
     @PostMapping("/{id}/approve")

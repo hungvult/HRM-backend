@@ -30,7 +30,8 @@ public class CompanyEgressIpWifiVerifier implements CompanyWifiVerifier {
                 .orElseThrow(() -> invalidWifi());
 
         WorkLocationWifiNetwork network = wifiNetworks.findActiveWithLocationById(source.getWifiNetworkId())
-                .orElseThrow(() -> invalidWifi());
+                // IP đã khớp cấu hình nhưng ID mạng không dùng được là lỗi cấu hình, không phải sai Wi-Fi để bỏ qua.
+                .orElseThrow(() -> new IllegalStateException("Mạng Wi-Fi tin cậy chưa được cấu hình hoặc đã vô hiệu hóa."));
         return new VerifiedCompanyWifi(network, sourceAddress);
     }
 
@@ -67,7 +68,11 @@ public class CompanyEgressIpWifiVerifier implements CompanyWifiVerifier {
             byte[] network = InetAddress.getByName(parts[0]).getAddress();
             byte[] candidate = address.getAddress();
             int prefixLength = Integer.parseInt(parts[1]);
-            if (network.length != candidate.length || prefixLength < 0 || prefixLength > network.length * 8) {
+            // Prefix sai là lỗi cấu hình, không được đổi thành sai Wi-Fi rồi cho OR bỏ qua bằng GPS.
+            if (prefixLength < 0 || prefixLength > network.length * 8) {
+                throw new IllegalStateException("CIDR Wi-Fi công ty không hợp lệ.");
+            }
+            if (network.length != candidate.length) {
                 return false;
             }
             int completeBytes = prefixLength / 8;

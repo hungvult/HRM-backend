@@ -32,7 +32,7 @@ public class PositionController {
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
-    @Operation(summary = "Tạo chức vụ", description = "Chỉ ADMIN/HR. Hệ thống tự sinh mã theo dạng CV + ID sáu chữ số và yêu cầu cấp bậc từ 1 đến 10.")
+    @Operation(summary = "Tạo chức vụ", description = "Chỉ ADMIN/HR. Nhận mã nhập từ Web, tự sinh nếu client cũ bỏ mã; cấp bậc từ 1 đến 10.")
     @ApiResponses({@ApiResponse(responseCode = "201", description = "Đã tạo chức vụ"),
             @ApiResponse(responseCode = "400", description = "Dữ liệu không hợp lệ", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "403", description = "Chỉ ADMIN/HR được phép tạo", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
@@ -56,7 +56,7 @@ public class PositionController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
-    @Operation(summary = "Cập nhật chức vụ", description = "Chỉ ADMIN/HR. Mã và trạng thái không được thay đổi qua API này.")
+    @Operation(summary = "Cập nhật chức vụ", description = "Chỉ ADMIN/HR. Cho phép cập nhật mã, trạng thái, tên, mô tả và cấp bậc trong một transaction.")
     public ResponseEntity<PositionResponse> updatePosition(@PathVariable Long id,
                                                             @AuthenticationPrincipal CustomUserDetails currentUser,
                                                             @Valid @RequestBody UpdatePositionRequest request) {
@@ -65,7 +65,7 @@ public class PositionController {
 
     @PatchMapping("/{id}/status")
     @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
-    @Operation(summary = "Kích hoạt hoặc vô hiệu hóa chức vụ", description = "Không thể vô hiệu hóa chức vụ đang có nhân viên được phân công hiện hành.")
+    @Operation(summary = "Kích hoạt hoặc vô hiệu hóa chức vụ", description = "Vô hiệu hóa giữ phân công cũ và chặn phân công mới.")
     public ResponseEntity<PositionResponse> updatePositionStatus(@PathVariable Long id,
                                                                   @AuthenticationPrincipal CustomUserDetails currentUser,
                                                                   @Valid @RequestBody UpdatePositionStatusRequest request) {
@@ -85,4 +85,13 @@ public class PositionController {
     public ResponseEntity<PositionResponse> getPosition(@PathVariable Long id) {
         return ResponseEntity.ok(positionService.getPosition(id));
     }
+    // id là PK danh mục; service kiểm phân công trước khi xóa mềm và ghi audit.
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
+    @Operation(summary = "Xóa danh mục không còn nhân viên", description = "Xóa mềm để giữ lịch sử; còn phân công hiện hành trả 409 và hướng dẫn phân công lại hoặc vô hiệu hóa.")
+    public ResponseEntity<Void> deletePosition(@PathVariable Long id, @AuthenticationPrincipal CustomUserDetails user) {
+        positionService.deletePosition(user.getAccount().getId(), id);
+        return ResponseEntity.noContent().build();
+    }
+
 }

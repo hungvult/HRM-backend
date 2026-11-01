@@ -23,6 +23,12 @@ spring:
   jackson:
     time-zone: UTC
 
+  # Ảnh đúng 5 MiB được nhận; request có thêm JSON/header/boundary dùng giới hạn 6 MiB.
+  servlet:
+    multipart:
+      max-file-size: 5242880B
+      max-request-size: 6291456B
+
 server:
   port: 8080
 

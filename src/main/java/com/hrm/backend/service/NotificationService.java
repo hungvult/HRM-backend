@@ -11,6 +11,7 @@ public interface NotificationService {
     NotificationResponse getMyNotification(Long accountId, Long notificationId);
 
     NotificationResponse markMyNotificationRead(Long accountId, Long notificationId);
+    NotificationResponse markMyNotificationUnread(Long accountId, Long notificationId);
 
     int markAllMyNotificationsRead(Long accountId);
 }

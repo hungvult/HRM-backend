@@ -18,11 +18,18 @@ public interface DepartmentRepository extends JpaRepository<Department, Long> {
 
     @Query("""
             SELECT d FROM Department d
-            WHERE (:q = '' OR LOWER(d.code) LIKE LOWER(CONCAT('%', :q, '%'))
+            WHERE d.deletedAt IS NULL AND (:q = '' OR LOWER(d.code) LIKE LOWER(CONCAT('%', :q, '%'))
                 OR LOWER(d.name) LIKE LOWER(CONCAT('%', :q, '%')))
               AND (:status IS NULL OR d.status = :status)
             """)
     Page<Department> searchDepartments(@Param("q") String q,
                                        @Param("status") DepartmentStatus status,
                                        Pageable pageable);
+    boolean existsByCodeIgnoreCaseAndIdNot(String code, Long id);
+
+    // Bản ghi đã xóa không còn được sửa hoặc nhận phân công mới.
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT x FROM Department x WHERE x.id = :id AND x.deletedAt IS NULL")
+    java.util.Optional<Department> findLiveByIdForUpdate(@Param("id") Long id);
+
 }

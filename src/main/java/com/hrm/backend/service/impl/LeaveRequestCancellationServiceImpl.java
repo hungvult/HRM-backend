@@ -28,7 +28,22 @@ public class LeaveRequestCancellationServiceImpl implements LeaveRequestCancella
 
     @Override
     @Transactional
+    // Giữ caller cũ không gửi lý do; vẫn dùng cùng khóa đơn và transaction với luồng mới.
     public LeaveRequestDetailResponse cancel(Long accountId, Long leaveRequestId) {
+        return cancel(accountId, leaveRequestId, null);
+    }
+
+    @Override
+    @Transactional
+    // accountId là người đang đăng nhập, leaveRequestId là ID đơn. Chỉ chủ đơn được hủy khi còn PENDING.
+    // Khóa đơn dùng chung với duyệt: lượt sau thấy trạng thái đã đổi sẽ trả 409, không ghi lịch sử trái nhau.
+    // Ghi CANCELLED/cancelled_at và reason vào history.note cùng transaction; không sửa used_days.
+    public LeaveRequestDetailResponse cancel(Long accountId, Long leaveRequestId, String reason) {
+        // Kiểm tra cả ở service để caller ngoài HTTP không bỏ qua giới hạn; chuỗi trắng được coi là không nhập.
+        if (reason != null && reason.length() > 1000) {
+            throw new AuthException("VALIDATION_ERROR", "Lý do hủy không được quá 1.000 ký tự.", 400);
+        }
+        String note = reason == null || reason.isBlank() ? null : reason.trim();
         Employee actor = employees.findByAccountId(accountId)
                 .orElseThrow(() -> new AuthException("EMPLOYEE_PROFILE_REQUIRED", "Tài khoản chưa có hồ sơ nhân viên.", 403));
         LeaveRequest request = leaveRequests.findWithEmployeeAndLeaveTypeByIdForUpdate(leaveRequestId)
@@ -40,13 +55,14 @@ public class LeaveRequestCancellationServiceImpl implements LeaveRequestCancella
             throw new AuthException("LEAVE_REQUEST_NOT_CANCELLABLE", "Chỉ có thể hủy đơn nghỉ phép đang chờ xử lý.", 409);
         }
 
+        // Chỉ ghi sau khi xác nhận chủ đơn và trạng thái dưới khóa; giao dịch lỗi sẽ giữ nguyên PENDING.
         request.setStatus(LeaveRequestStatus.CANCELLED);
         request.setCancelledAt(OffsetDateTime.now());
         statusHistories.save(LeaveRequestStatusHistory.builder().leaveRequest(request)
                 .oldStatus(LeaveRequestStatus.PENDING).newStatus(LeaveRequestStatus.CANCELLED)
-                .changedByEmployee(actor).build());
+                .changedByEmployee(actor).note(note).build());
 
-        // Pending requests reserve balance dynamically, so a CANCELLED request is excluded without altering usedDays.
+        // Quỹ giữ chỗ dựa trên PENDING: hủy thì không còn bị tính, không cộng/hoàn used_days cho phép không lương.
         return leaveQueryService.getLeaveRequestDetail(accountId, leaveRequestId);
     }
 }

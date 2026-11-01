@@ -24,5 +24,9 @@ public class PayrollPreview {
     @Column(name = "consumed_at") private OffsetDateTime consumedAt;
     @Column(name = "created_at", nullable = false, updatable = false) private OffsetDateTime createdAt;
 
+    // Chỉ preview tạo lại mới lưu PK bảng gốc và revision HR đã xem; xác nhận kiểm lại cả hai.
+    @Column(name = "regenerate_run_id") private Long regenerateRunId;
+    @Column(name = "expected_revision") private Integer expectedRevision;
+
     @PrePersist void onCreate() { if (createdAt == null) createdAt = OffsetDateTime.now(); }
 }

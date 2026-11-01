@@ -41,7 +41,7 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
     @EntityGraph(attributePaths = {"employee", "leaveType"})
     @Query("""
             SELECT r FROM LeaveRequest r WHERE
-              (:companyWide = true OR r.employee.id = :viewerEmployeeId OR (:canReadDirectReports = true AND EXISTS (
+              (:companyWide = true OR (:canReadDirectReports = true AND EXISTS (
                   SELECT 1 FROM EmployeeAssignment a
                   WHERE a.employee = r.employee AND a.managerEmployee.id = :viewerEmployeeId AND a.isCurrent = true)))
               AND (:status IS NULL OR r.status = :status)

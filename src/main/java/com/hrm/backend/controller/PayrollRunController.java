@@ -47,4 +47,13 @@ public class PayrollRunController {
                                                         @PathVariable Long runId) {
         return ResponseEntity.ok(payrolls.myPayslip(principal.getAccount().getId(), runId));
     }
+
+    @GetMapping("/my-payslips/by-period")
+    @PreAuthorize("isAuthenticated()")
+    @io.swagger.v3.oas.annotations.Operation(summary = "Phiếu lương cá nhân theo tháng/năm", description = "Cùng cấu trúc với chi tiết theo runId. 404 PAYSLIP_NOT_FOUND: thiếu kỳ/phiếu; PAYSLIP_NOT_AVAILABLE: kỳ chưa công bố.")
+    // Route tĩnh by-period được Spring ưu tiên trước /{runId}; chỉ đọc phiếu của tài khoản đang đăng nhập.
+    public ResponseEntity<MyPayslipResponse> myPayslipByPeriod(@AuthenticationPrincipal CustomUserDetails principal,
+            @RequestParam short year, @RequestParam short month) {
+        return ResponseEntity.ok(payrolls.myPayslipByPeriod(principal.getAccount().getId(), year, month));
+    }
 }

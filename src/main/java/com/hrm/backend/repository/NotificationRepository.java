@@ -15,6 +15,10 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     Page<Notification> findByRecipientAccountId(Long recipientAccountId, Pageable pageable);
     Optional<Notification> findByIdAndRecipientAccountId(Long id, Long recipientAccountId);
     long countByRecipientAccountIdAndIsReadFalse(Long recipientAccountId);
+    // UPDATE khóa hàng theo ID và người nhận, ghi lại cả khi đã false để không bỏ mất thao tác chạy sau read-all.
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Notification n SET n.isRead = false, n.readAt = null WHERE n.id = :id AND n.recipientAccount.id = :accountId")
+    int markUnread(@Param("id") Long id, @Param("accountId") Long accountId);
     @Modifying @Query(value = "INSERT INTO notifications (recipient_account_id, notification_type, event_key, title, content, related_entity_type, related_entity_id, is_read, created_at) VALUES (:recipientAccountId, :notificationType, :eventKey, :title, :content, :relatedEntityType, :relatedEntityId, false, CURRENT_TIMESTAMP) ON CONFLICT (recipient_account_id, event_key) WHERE event_key IS NOT NULL DO NOTHING", nativeQuery = true)
     int insertIfAbsent(@Param("recipientAccountId") Long recipientAccountId, @Param("notificationType") String notificationType, @Param("eventKey") String eventKey, @Param("title") String title, @Param("content") String content, @Param("relatedEntityType") String relatedEntityType, @Param("relatedEntityId") Long relatedEntityId);
     @Modifying(clearAutomatically = true, flushAutomatically = true)

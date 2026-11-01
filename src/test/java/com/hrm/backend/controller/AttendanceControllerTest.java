@@ -22,6 +22,23 @@ import static org.mockito.Mockito.when;
 class AttendanceControllerTest {
 
     @Test
+    void preCheckUsesAuthenticatedAccountAndReturnsReadOnlyResult() {
+        AttendanceService service = mock(AttendanceService.class);
+        var controller = new AttendanceController(service);
+        Account account = Account.builder().id(42L).username("employee01").build();
+        var principal = new CustomUserDetails(account, List.of("EMPLOYEE"));
+        var location = new AttendanceLocationRequest(null, null, null, null);
+        var request = mock(HttpServletRequest.class);
+        var expected = new com.hrm.backend.dto.response.AttendancePrecheckResponse(true, "OR", true, false,
+                OffsetDateTime.parse("2026-11-26T08:00:00+07:00"));
+        when(service.preCheck(42L, location, request)).thenReturn(expected);
+        var response = controller.preCheck(principal, location, request);
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals(expected, response.getBody());
+        verify(service).preCheck(42L, location, request);
+    }
+
+    @Test
     void checkIn_usesAuthenticatedAccountInsteadOfClientEmployeeId() {
         AttendanceService attendanceService = mock(AttendanceService.class);
         AttendanceController controller = new AttendanceController(attendanceService);

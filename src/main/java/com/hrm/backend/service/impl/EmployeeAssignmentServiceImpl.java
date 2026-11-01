@@ -36,6 +36,9 @@ public class EmployeeAssignmentServiceImpl implements EmployeeAssignmentService 
     private final AuditLogRepository audits;
     private final AccessScopeService accessScope;
 
+    /** HR phân công employees.id vào departments.id/positions.id; managerEmployeeId cũng là employees.id.
+     * Khóa hồ sơ và danh mục, kiểm đang hiệu lực/tự quản lý trước khi đóng phân công hiện tại và tạo bản mới.
+     * Cùng ngày giữ khoảng ngày hợp lệ, bản ID cuối quyết định hiệu lực; audit ghi trước/sau và transaction rollback khi lỗi. */
     @Override
     @Transactional
     public EmployeeAssignmentResponse createAssignment(Long actorAccountId, CreateEmployeeAssignmentRequest request) {
@@ -49,12 +52,12 @@ public class EmployeeAssignmentServiceImpl implements EmployeeAssignmentService 
                 .orElseThrow(() -> notFound("EMPLOYEE_NOT_FOUND", "Không tìm thấy nhân viên."));
         requireWorking(employee, "Nhân viên được phân công phải đang làm việc.");
 
-        Department department = departments.findById(request.getDepartmentId())
+        Department department = departments.findLiveByIdForUpdate(request.getDepartmentId())
                 .orElseThrow(() -> notFound("DEPARTMENT_NOT_FOUND", "Không tìm thấy phòng ban."));
         if (department.getStatus() != DepartmentStatus.ACTIVE) {
             throw conflict("DEPARTMENT_INACTIVE", "Không thể phân công vào phòng ban không còn hiệu lực.");
         }
-        Position position = positions.findById(request.getPositionId())
+        Position position = positions.findLiveByIdForUpdate(request.getPositionId())
                 .orElseThrow(() -> notFound("POSITION_NOT_FOUND", "Không tìm thấy chức vụ."));
         if (position.getStatus() != PositionStatus.ACTIVE) {
             throw conflict("POSITION_INACTIVE", "Không thể phân công vào chức vụ không còn hiệu lực.");
@@ -75,19 +78,21 @@ public class EmployeeAssignmentServiceImpl implements EmployeeAssignmentService 
 
         Account actor = accounts.findById(actorAccountId)
                 .orElseThrow(() -> notFound("ACCOUNT_NOT_FOUND", "Không tìm thấy tài khoản thực hiện."));
-        assignments.findCurrentAssignmentForUpdate(employee.getId()).ifPresent(current -> {
+        EmployeeAssignment current = assignments.findCurrentAssignmentForUpdate(employee.getId()).orElse(null);
+        String oldData = current == null ? null : assignmentAuditData(current);
+        if (current != null) {
             current.setIsCurrent(false);
-            current.setEffectiveTo(effectiveFrom.minusDays(1));
+            // Cùng ngày giữ bản cũ trong lịch sử; ID lớn hơn quyết định bản hiệu lực cuối ngày.
+            current.setEffectiveTo(current.getEffectiveFrom().equals(effectiveFrom) ? effectiveFrom : effectiveFrom.minusDays(1));
             assignments.save(current);
-        });
+        }
 
         EmployeeAssignment saved = assignments.saveAndFlush(EmployeeAssignment.builder()
                 .employee(employee).department(department).position(position).managerEmployee(manager)
                 .effectiveFrom(effectiveFrom).isCurrent(true).assignedByAccount(actor).build());
         audits.save(AuditLog.builder().actorAccount(actor).action("EMPLOYEE_ASSIGNMENT_CREATED")
                 .entityType("EMPLOYEE_ASSIGNMENT").entityId(saved.getId())
-                .newData(String.format("{\"employeeId\":%d,\"departmentId\":%d,\"positionId\":%d}",
-                        employee.getId(), department.getId(), position.getId()))
+                .oldData(oldData).newData(assignmentAuditData(saved))
                 .occurredAt(OffsetDateTime.now()).build());
         return toResponse(saved);
     }
@@ -139,6 +144,16 @@ public class EmployeeAssignmentServiceImpl implements EmployeeAssignmentService 
     private EmployeeAssignmentResponse.AssignedBy assignedBy(Account account) {
         return account == null ? null : EmployeeAssignmentResponse.AssignedBy.builder().accountId(account.getId()).username(account.getUsername()).build();
     }
+    /** Chụp các PK và khoảng hiệu lực trước/sau để audit giải thích đúng người, danh mục và quản lý đã đổi; không ghi DB. */
+    private String assignmentAuditData(EmployeeAssignment item) {
+        return String.format(java.util.Locale.ROOT,
+                "{\"employeeId\":%d,\"departmentId\":%s,\"positionId\":%s,\"managerEmployeeId\":%s,\"effectiveFrom\":\"%s\",\"effectiveTo\":%s,\"isCurrent\":%s}",
+                item.getEmployee().getId(), item.getDepartment() == null ? "null" : item.getDepartment().getId().toString(),
+                item.getPosition() == null ? "null" : item.getPosition().getId().toString(),
+                item.getManagerEmployee() == null ? "null" : item.getManagerEmployee().getId().toString(),
+                item.getEffectiveFrom(), item.getEffectiveTo() == null ? "null" : "\"" + item.getEffectiveTo() + "\"", item.getIsCurrent());
+    }
+
     private void requireWorking(Employee employee, String message) {
         if (employee.getEmploymentStatus() != EmploymentStatus.WORKING) throw conflict("EMPLOYEE_NOT_WORKING", message);
     }

@@ -16,7 +16,7 @@ public interface PositionRepository extends JpaRepository<Position, Long> {
 
     @Query("""
             SELECT p FROM Position p
-            WHERE (:q = '' OR LOWER(p.code) LIKE LOWER(CONCAT('%', :q, '%'))
+            WHERE p.deletedAt IS NULL AND (:q = '' OR LOWER(p.code) LIKE LOWER(CONCAT('%', :q, '%'))
                 OR LOWER(p.name) LIKE LOWER(CONCAT('%', :q, '%')))
               AND (:status IS NULL OR p.status = :status)
               AND (:rankLevel IS NULL OR p.rankLevel = :rankLevel)
@@ -25,4 +25,13 @@ public interface PositionRepository extends JpaRepository<Position, Long> {
                                    @Param("status") PositionStatus status,
                                    @Param("rankLevel") Integer rankLevel,
                                    Pageable pageable);
+    boolean existsByCodeIgnoreCase(String code);
+
+    boolean existsByCodeIgnoreCaseAndIdNot(String code, Long id);
+
+    // Bản ghi đã xóa không còn được sửa hoặc nhận phân công mới.
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT x FROM Position x WHERE x.id = :id AND x.deletedAt IS NULL")
+    java.util.Optional<Position> findLiveByIdForUpdate(@Param("id") Long id);
+
 }

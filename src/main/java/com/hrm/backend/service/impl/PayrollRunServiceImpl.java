@@ -48,19 +48,34 @@ public class PayrollRunServiceImpl implements PayrollRunService {
     @Value("${app.payroll.standard-minutes-per-day:0}")
     private int standardMinutesPerDay;
 
+    /** HR xem thử kỳ lương; regenerateRunId nếu có là payroll_runs.id chưa công bố của đúng kỳ.
+     * Tính từ công/lương nguồn, lưu payroll_previews của chính HR kèm fingerprint, revision và hạn token; chưa sửa bảng lương. */
     @Override
     @Transactional
     public PayrollPreviewResponse preview(Long accountId, CreatePayrollPreviewRequest request) {
         validatePeriod(request.year(), request.month());
+        // Tạo lại chỉ áp dụng đúng ID/kỳ GENERATED; ghi revision vào preview để chặn xác nhận bản cũ.
+        PayrollRun replacement = null;
+        if (request.regenerateRunId() != null) {
+            replacement = payrollRuns.findByIdForUpdate(request.regenerateRunId())
+                    .orElseThrow(() -> new ResourceNotFoundException("PAYROLL_RUN_NOT_FOUND", "Không tìm thấy bảng lương."));
+            if (!replacement.getPayrollYear().equals(request.year()) || !replacement.getPayrollMonth().equals(request.month()))
+                throw conflict("PAYROLL_PERIOD_MISMATCH", "Bảng lương không thuộc kỳ được chọn.");
+            requireUnpublished(replacement);
+        }
         Calculation calculation = calculate(request.year(), request.month());
         String token = "pprv_" + UUID.randomUUID().toString().replace("-", "");
         OffsetDateTime expiresAt = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(15);
         previews.save(PayrollPreview.builder().tokenHash(hash(token)).ownerAccount(accounts.getReferenceById(accountId))
                 .payrollYear(request.year()).payrollMonth(request.month()).inputFingerprint(calculation.fingerprint)
-                .expiresAt(expiresAt).build());
+                .expiresAt(expiresAt).regenerateRunId(request.regenerateRunId())
+                .expectedRevision(replacement == null ? null : replacement.getRevision()).build());
         return calculation.toPreview(token, expiresAt);
     }
 
+    /** HR xác nhận previewToken đã xem: tra token băm và kiểm chủ sở hữu/hạn dùng trước khi khóa kỳ và dữ liệu.
+     * Token đã dùng chỉ đọc kết quả; token cũ sau đổi dữ liệu/revision bị từ chối.
+     * Tạo mới hoặc thay chi tiết bảng GENERATED, giữ snapshot cũ trong audit và ghi consumed cùng transaction; không thay PUBLISHED. */
     @Override
     @Transactional
     public PayrollConfirmationResult confirm(Long accountId, ConfirmPayrollPreviewRequest request) {
@@ -78,12 +93,44 @@ public class PayrollRunServiceImpl implements PayrollRunService {
         if (!calculation.fingerprint.equals(preview.getInputFingerprint()))
             throw conflict("PAYROLL_PREVIEW_STALE", "Dữ liệu nguồn đã thay đổi, hãy xem trước lại.");
         if (!calculation.canConfirm) throw new AuthException("PAYROLL_INPUT_MISSING", "Dữ liệu tính lương chưa đầy đủ.", 422);
-        payrollRuns.findByPayrollYearAndPayrollMonth(preview.getPayrollYear(), preview.getPayrollMonth()).ifPresent(run -> {
-            throw periodExists(run.getId());
-        });
+        PayrollRun replacement = null;
+        if (preview.getRegenerateRunId() != null) {
+            replacement = payrollRuns.findByIdForUpdate(preview.getRegenerateRunId())
+                    .orElseThrow(() -> new ResourceNotFoundException("PAYROLL_RUN_NOT_FOUND", "Không tìm thấy bảng lương."));
+            requireUnpublished(replacement);
+            if (!Objects.equals(replacement.getRevision(), preview.getExpectedRevision()))
+                throw conflict("PAYROLL_PREVIEW_STALE", "Bảng lương đã được tạo lại. Vui lòng xem trước lại.");
+        } else {
+            payrollRuns.findByPayrollYearAndPayrollMonth(preview.getPayrollYear(), preview.getPayrollMonth()).ifPresent(run -> {
+                throw periodExists(run.getId());
+            });
+        }
 
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-        PayrollRun run = payrollRuns.save(PayrollRun.builder().payrollYear(preview.getPayrollYear())
+        // Confirm khóa kỳ → employee → run; khóa run dùng chung với publish để bảo vệ trạng thái.
+        // Chỉ xóa chi tiết cũ sau toàn bộ kiểm tra, transaction rollback nếu bước sau thất bại.
+        PayrollRun run;
+        if (replacement != null) {
+            String before = "{\"revision\":" + replacement.getRevision() + ",\"items\":" + entityManager.createNativeQuery(
+                    "SELECT COALESCE(jsonb_agg(to_jsonb(i)), '[]'::jsonb)::text FROM payroll_items i WHERE payroll_run_id = :id")
+                    .setParameter("id", replacement.getId()).getSingleResult() + "}";
+            payrollItems.deleteByPayrollRunId(replacement.getId());
+            payrollItems.flush();
+            replacement.setRevision(replacement.getRevision() + 1);
+            replacement.setStandardWorkingDays(calculation.standardDays);
+            replacement.setStandardMinutesPerDay(standardMinutesPerDay);
+            replacement.setCalculationRuleVersion(RULE_VERSION);
+            replacement.setInputFingerprint(calculation.fingerprint);
+            replacement.setGeneratedByAccount(accounts.getReferenceById(accountId));
+            replacement.setGeneratedAt(now);
+            run = payrollRuns.saveAndFlush(replacement);
+            // Snapshot cũ được lưu JSON trong audit trước khi thay chi tiết; lỗi bất kỳ rollback cả lượt.
+            AuditLog audit = AuditLog.builder().actorAccount(accounts.getReferenceById(accountId))
+                    .action("PAYROLL_REGENERATED").entityType("PAYROLL_RUN").entityId(run.getId())
+                    .oldData(before)
+                    .newData("{\"revision\":" + run.getRevision() + "}").build();
+            entityManager.persist(audit);
+        } else run = payrollRuns.save(PayrollRun.builder().payrollYear(preview.getPayrollYear())
                 .payrollMonth(preview.getPayrollMonth()).status(PayrollRunStatus.GENERATED)
                 .standardWorkingDays(calculation.standardDays).standardMinutesPerDay(standardMinutesPerDay)
                 .calculationRuleVersion(RULE_VERSION).inputFingerprint(calculation.fingerprint)
@@ -113,7 +160,39 @@ public class PayrollRunServiceImpl implements PayrollRunService {
                 .orElseThrow(() -> new ResourceNotFoundException("PAYSLIP_NOT_AVAILABLE", "Phiếu lương chưa khả dụng."));
         PayrollItem item = payrollItems.findByPayrollRunIdAndEmployeeId(runId, employee.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("PAYSLIP_NOT_AVAILABLE", "Phiếu lương chưa khả dụng."));
+        return payslipResponse(run, item);
+    }
+
+    @Override
+    // UC019: accountId là accounts.id từ phiên, year/month chọn đúng payroll_runs; không nhận employeeId từ client.
+    // Thiếu hồ sơ/kỳ/phiếu trả PAYSLIP_NOT_FOUND, kỳ chưa PUBLISHED trả PAYSLIP_NOT_AVAILABLE và không đọc khoản tiền.
+    // Thành công dùng cùng hàm dựng chi tiết cũ, giữ nguyên shape/snapshot đã công bố; hàm chỉ đọc DB.
+    public MyPayslipResponse myPayslipByPeriod(Long accountId, short year, short month) {
+        if (year < 2000 || year > 2100 || month < 1 || month > 12) {
+            throw new AuthException("VALIDATION_ERROR", "Năm phải từ 2000 đến 2100 và tháng từ 1 đến 12.", 400);
+        }
+        Employee employee = employees.findByAccountId(accountId)
+                .orElseThrow(() -> new ResourceNotFoundException("PAYSLIP_NOT_FOUND", "Không tìm thấy phiếu lương cho kỳ đã chọn."));
+        PayrollRun run = payrollRuns.findByPayrollYearAndPayrollMonth(year, month)
+                .orElseThrow(() -> new ResourceNotFoundException("PAYSLIP_NOT_FOUND", "Không tìm thấy phiếu lương cho kỳ đã chọn."));
+        // Kiểm tra công bố trước khi tìm item để không tải hoặc trả các khoản tiền chưa được phép xem.
+        if (run.getStatus() != PayrollRunStatus.PUBLISHED) {
+            throw new ResourceNotFoundException("PAYSLIP_NOT_AVAILABLE", "Phiếu lương kỳ đã chọn chưa được công bố.");
+        }
+        PayrollItem item = payrollItems.findByPayrollRunIdAndEmployeeId(run.getId(), employee.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("PAYSLIP_NOT_FOUND", "Không tìm thấy phiếu lương cho kỳ đã chọn."));
+        return payslipResponse(run, item);
+    }
+
+    // Cả API theo runId và theo kỳ đều trả đúng cấu trúc chi tiết từ snapshot, không đọc mức lương hiện tại.
+    private MyPayslipResponse payslipResponse(PayrollRun run, PayrollItem item) {
         return new MyPayslipResponse(run.getId(), run.getPayrollYear(), run.getPayrollMonth(), toItemResponse(item), run.getPublishedAt());
+    }
+
+    /** Dùng cho preview và xác nhận tạo lại; công bố rồi thì dừng, không thay snapshot nhân viên đang xem. */
+    private void requireUnpublished(PayrollRun run) {
+        if (run.getStatus() != PayrollRunStatus.GENERATED)
+            throw conflict("PAYROLL_RUN_PUBLISHED", "Bảng lương đã công bố, không thể tạo lại.");
     }
 
     private Calculation calculate(short year, short month) {

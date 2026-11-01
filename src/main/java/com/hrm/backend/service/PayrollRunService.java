@@ -8,4 +8,5 @@ public interface PayrollRunService {
     PayrollConfirmationResult confirm(Long accountId, ConfirmPayrollPreviewRequest request);
     PayrollRunResponse publish(Long accountId, Long runId);
     MyPayslipResponse myPayslip(Long accountId, Long runId);
+    MyPayslipResponse myPayslipByPeriod(Long accountId, short year, short month);
 }
