@@ -1,6 +1,8 @@
 -- Manual attendance is created/adjusted only by the protected management API.
 -- Keep the server-controlled flag, actor and reason together; never invent GPS
--- evidence for a correction. Self-service check-in/out still requires evidence.
+-- evidence for a correction. Self-service check-in/out always requires GPS.
+-- GPS-only mode leaves both Wi-Fi fields null. When present, Wi-Fi ID and
+-- nonblank SSID must remain paired; application configuration enforces Wi-Fi mode.
 -- Repeatable so this also works when production has not received V4/V5 yet.
 DO $$
 BEGIN
@@ -30,8 +32,10 @@ BEGIN
                 AND NULLIF(btrim(adjustment_reason), '') IS NOT NULL
             )
             OR (
-                NULLIF(btrim(check_in_wifi_ssid), '') IS NOT NULL
-                AND check_in_wifi_network_id IS NOT NULL
+                (
+                    (check_in_wifi_ssid IS NULL AND check_in_wifi_network_id IS NULL)
+                    OR (NULLIF(btrim(check_in_wifi_ssid), '') IS NOT NULL AND check_in_wifi_network_id IS NOT NULL)
+                )
                 AND check_in_work_location_id IS NOT NULL
                 AND check_in_latitude IS NOT NULL
                 AND check_in_latitude BETWEEN -90 AND 90
@@ -52,8 +56,10 @@ BEGIN
                 AND NULLIF(btrim(adjustment_reason), '') IS NOT NULL
             )
             OR (
-                NULLIF(btrim(check_out_wifi_ssid), '') IS NOT NULL
-                AND check_out_wifi_network_id IS NOT NULL
+                (
+                    (check_out_wifi_ssid IS NULL AND check_out_wifi_network_id IS NULL)
+                    OR (NULLIF(btrim(check_out_wifi_ssid), '') IS NOT NULL AND check_out_wifi_network_id IS NOT NULL)
+                )
                 AND check_out_work_location_id IS NOT NULL
                 AND check_out_latitude IS NOT NULL
                 AND check_out_latitude BETWEEN -90 AND 90

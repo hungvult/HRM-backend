@@ -10,6 +10,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import tools.jackson.databind.exc.InvalidFormatException;
 
 import java.time.OffsetDateTime;
@@ -30,6 +32,7 @@ public class ApiExceptionHandler {
                 .message(ex.getMessage())
                 .path(request.getRequestURI())
                 .traceId(getTraceId(request))
+                .errors(ex.getErrors())
                 .build();
         return ResponseEntity.status(ex.getStatus()).body(errorResponse);
     }
@@ -92,6 +95,31 @@ public class ApiExceptionHandler {
                 .traceId(getTraceId(request))
                 .build();
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleMethodArgumentTypeMismatch(
+            MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
+        return badRequest(request, ex.getName(), "Giá trị không đúng kiểu hoặc không thuộc tập giá trị cho phép.");
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponse> handleMissingRequestParameter(
+            MissingServletRequestParameterException ex, HttpServletRequest request) {
+        return badRequest(request, ex.getParameterName(), "Tham số bắt buộc không được để trống.");
+    }
+
+    private ResponseEntity<ErrorResponse> badRequest(HttpServletRequest request, String field, String fieldMessage) {
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .timestamp(OffsetDateTime.now(ZoneOffset.UTC).toString())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .code("VALIDATION_ERROR")
+                .message("Dữ liệu gửi lên không hợp lệ.")
+                .path(request.getRequestURI())
+                .traceId(getTraceId(request))
+                .errors(List.of(ErrorResponse.FieldError.builder().field(field).message(fieldMessage).build()))
+                .build();
+        return ResponseEntity.badRequest().body(errorResponse);
     }
 
     private boolean isAttendanceGpsReadError(String path, HttpMessageNotReadableException ex) {
