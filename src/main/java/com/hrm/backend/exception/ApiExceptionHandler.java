@@ -10,6 +10,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import tools.jackson.databind.exc.InvalidFormatException;
 
 import java.time.OffsetDateTime;
@@ -21,6 +23,54 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
+    /** Hai lượt lưu có thể cùng vượt qua kiểm trùng; ràng buộc DB quyết định lượt sau và trả 409 thay vì 500. */
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleIntegrity(org.springframework.dao.DataIntegrityViolationException ex, HttpServletRequest request) {
+        String constraint = "";
+        for (Throwable cause = ex; cause != null; cause = cause.getCause()) {
+            if (cause instanceof org.hibernate.exception.ConstraintViolationException violation && violation.getConstraintName() != null)
+                constraint = violation.getConstraintName().toLowerCase(java.util.Locale.ROOT);
+        }
+        String code = "DATA_CONFLICT";
+        String message = "Dữ liệu đã thay đổi hoặc đang được sử dụng. Vui lòng tải lại và kiểm tra trước khi lưu.";
+        if (constraint.contains("employee") && constraint.contains("code")) { code="EMPLOYEE_CODE_ALREADY_EXISTS";message="Mã nhân viên đã tồn tại."; }
+        else if (constraint.contains("department") && constraint.contains("code")) { code="DEPARTMENT_CODE_ALREADY_EXISTS";message="Mã phòng ban đã tồn tại."; }
+        else if (constraint.contains("position") && constraint.contains("code")) { code="POSITION_CODE_ALREADY_EXISTS";message="Mã chức vụ đã tồn tại."; }
+        return handleAuthException(new AuthException(code, message, 409), request);
+    }
+
+    // Trả đúng tên trường của hợp đồng API, không đưa tên constraint hay câu SQL ra giao diện.
+    private String conflictField(String code) {
+        return switch (code) {
+            case "EMPLOYEE_CODE_ALREADY_EXISTS" -> "employeeCode";
+            case "DEPARTMENT_CODE_ALREADY_EXISTS", "POSITION_CODE_ALREADY_EXISTS" -> "code";
+            case "USERNAME_ALREADY_EXISTS" -> "username";
+            case "EMAIL_ALREADY_EXISTS", "EMPLOYEE_EMAIL_ALREADY_EXISTS" -> "email";
+            default -> null;
+        };
+    }
+
+    // Multipart typed request yêu cầu JSON; part sai MIME trả 415 để client sửa, không biến thành lỗi hệ thống.
+    @ExceptionHandler(org.springframework.web.HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleUnsupportedMedia(
+            org.springframework.web.HttpMediaTypeNotSupportedException ex, HttpServletRequest request) {
+        return handleAuthException(new AuthException("UNSUPPORTED_MEDIA_TYPE", "Kiểu dữ liệu không được hỗ trợ; part request phải là application/json.", 415), request);
+    }
+
+    // Spring có thể chặn multipart trước controller; giữ cùng mã lỗi dung lượng với bộ kiểm tra ảnh của service.
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleUploadSize(
+            org.springframework.web.multipart.MaxUploadSizeExceededException ex, HttpServletRequest request) {
+        return handleAuthException(new AuthException("LEAVE_ATTACHMENT_TOO_LARGE", "Ảnh tối đa 5 MB; toàn bộ yêu cầu tối đa 6 MB.", 413), request);
+    }
+
+    // Thiếu JSON part request hoặc multipart sai cấu trúc phải là lỗi đầu vào, không trả 500.
+    @ExceptionHandler({org.springframework.web.multipart.MultipartException.class,
+            org.springframework.web.multipart.support.MissingServletRequestPartException.class})
+    public ResponseEntity<ErrorResponse> handleMultipart(Exception ex, HttpServletRequest request) {
+        return handleAuthException(new AuthException("INVALID_REQUEST_BODY", "Dữ liệu multipart không hợp lệ hoặc thiếu part request JSON.", 400), request);
+    }
+
     @ExceptionHandler(AuthException.class)
     public ResponseEntity<ErrorResponse> handleAuthException(AuthException ex, HttpServletRequest request) {
         ErrorResponse errorResponse = ErrorResponse.builder()
@@ -30,6 +80,8 @@ public class ApiExceptionHandler {
                 .message(ex.getMessage())
                 .path(request.getRequestURI())
                 .traceId(getTraceId(request))
+                .errors(ex.getErrors() != null ? ex.getErrors() : conflictField(ex.getCode()) == null ? null : List.of(
+                        ErrorResponse.FieldError.builder().field(conflictField(ex.getCode())).message(ex.getMessage()).build()))
                 .build();
         return ResponseEntity.status(ex.getStatus()).body(errorResponse);
     }
@@ -75,7 +127,8 @@ public class ApiExceptionHandler {
                 .anyMatch(field -> "latitude".equals(field)
                         || "longitude".equals(field)
                         || "accuracyMeters".equals(field)
-                        || "locationCapturedAt".equals(field));
+                        || "locationCapturedAt".equals(field)
+                        || "gpsGroupComplete".equals(field));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
@@ -92,6 +145,31 @@ public class ApiExceptionHandler {
                 .traceId(getTraceId(request))
                 .build();
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleMethodArgumentTypeMismatch(
+            MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
+        return badRequest(request, ex.getName(), "Giá trị không đúng kiểu hoặc không thuộc tập giá trị cho phép.");
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponse> handleMissingRequestParameter(
+            MissingServletRequestParameterException ex, HttpServletRequest request) {
+        return badRequest(request, ex.getParameterName(), "Tham số bắt buộc không được để trống.");
+    }
+
+    private ResponseEntity<ErrorResponse> badRequest(HttpServletRequest request, String field, String fieldMessage) {
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .timestamp(OffsetDateTime.now(ZoneOffset.UTC).toString())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .code("VALIDATION_ERROR")
+                .message("Dữ liệu gửi lên không hợp lệ.")
+                .path(request.getRequestURI())
+                .traceId(getTraceId(request))
+                .errors(List.of(ErrorResponse.FieldError.builder().field(field).message(fieldMessage).build()))
+                .build();
+        return ResponseEntity.badRequest().body(errorResponse);
     }
 
     private boolean isAttendanceGpsReadError(String path, HttpMessageNotReadableException ex) {

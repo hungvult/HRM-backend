@@ -18,6 +18,15 @@ import static org.mockito.Mockito.when;
 
 class ApiExceptionHandlerTest {
 
+    @Test
+    void keepsFieldErrorForEnteredEmployeeCodeConflict() {
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        when(request.getRequestURI()).thenReturn("/v1/employees");
+        var response = handler.handleAuthException(new AuthException("EMPLOYEE_CODE_ALREADY_EXISTS", "Mã nhân viên đã tồn tại.", 409), request);
+        assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
+        assertEquals("employeeCode", response.getBody().getErrors().getFirst().getField());
+    }
+
     private final ApiExceptionHandler handler = new ApiExceptionHandler();
 
     @Test

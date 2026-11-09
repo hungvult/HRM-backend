@@ -59,9 +59,13 @@ public class ApiLoggingFilter extends OncePerRequestFilter {
         }
     }
 
+    // Ghi thông tin HTTP phục vụ trace; chỉ giải mã body JSON/text, không đưa ảnh hoặc multipart vào api_logs/content.
+    // Request tạo đơn vẫn ghi status/thời gian, còn response tải ảnh không bị biến bytea thành chuỗi log.
     private void saveApiLog(ContentCachingRequestWrapper request, ContentCachingResponseWrapper response, long elapsedMs) {
-        String requestBody = readBody(request.getContentAsByteArray(), request.getCharacterEncoding());
-        String responseBody = readBody(response.getContentAsByteArray(), response.getCharacterEncoding());
+        String requestBody = isTextBody(request.getContentType())
+                ? readBody(request.getContentAsByteArray(), request.getCharacterEncoding()) : "";
+        String responseBody = isTextBody(response.getContentType())
+                ? readBody(response.getContentAsByteArray(), response.getCharacterEncoding()) : "";
         String requestUrl = buildRequestUrl(request);
         String tokenCode = request.getHeader("Authorization");
         String method = request.getMethod();
@@ -85,6 +89,14 @@ public class ApiLoggingFilter extends OncePerRequestFilter {
                 .build();
 
         apiLogRepository.save(apiLog);
+    }
+
+    // Chỉ cho phép loại body có thể đọc thành văn bản; multipart, image, octet-stream và loại không rõ đều bỏ qua.
+    private boolean isTextBody(String contentType) {
+        if (contentType == null) return false;
+        String type = contentType.split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
+        return type.startsWith("text/") || type.equals("application/json") || type.endsWith("+json")
+                || type.equals("application/x-www-form-urlencoded");
     }
 
     private String buildContent(String method, String requestUrl, String tokenCode, String requestBody, String responseBody, int status) {

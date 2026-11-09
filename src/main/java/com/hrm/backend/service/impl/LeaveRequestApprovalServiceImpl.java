@@ -39,6 +39,9 @@ public class LeaveRequestApprovalServiceImpl implements LeaveRequestApprovalServ
 
     @Override
     @Transactional
+    // Dùng khi HR/quản lý duyệt: accountId là tài khoản người duyệt; leaveRequestId là ID đơn của nhân viên khác.
+    // Khóa đơn trước khi kiểm tra quyền/PENDING; lượt hủy/duyệt đồng thời đến sau phải đọc trạng thái mới và trả 409.
+    // Phép hưởng lương khóa quỹ và tăng used_days; phép không lương không đọc/ghi quỹ. Cả hai ghi APPROVED và lịch sử/thông báo.
     public LeaveRequestApprovalResponse approve(Long accountId, Long leaveRequestId) {
         LeaveRequest request = leaveRequests.findWithEmployeeAndLeaveTypeByIdForUpdate(leaveRequestId)
                 .orElseThrow(() -> new ResourceNotFoundException("LEAVE_REQUEST_NOT_FOUND", "Không tìm thấy đơn nghỉ phép."));
@@ -50,16 +53,21 @@ public class LeaveRequestApprovalServiceImpl implements LeaveRequestApprovalServ
             throw conflict("LEAVE_REQUEST_NOT_PENDING", "Chỉ có thể duyệt đơn nghỉ phép đang chờ xử lý.");
         }
 
-        LeaveBalance balance = leaveBalances.findForUpdate(request.getEmployee().getId(), request.getLeaveType().getId(),
-                        (short) request.getStartDate().getYear())
-                .orElseThrow(() -> conflict("LEAVE_BALANCE_NOT_FOUND", "Không tìm thấy số dư phép của nhân viên."));
-        BigDecimal remainingDays = balance.getAllocatedDays().subtract(balance.getUsedDays());
-        if (remainingDays.compareTo(request.getRequestedDays()) < 0) {
-            throw conflict("LEAVE_BALANCE_INSUFFICIENT", "Số dư phép hiện tại không đủ để duyệt đơn này.");
+        // Chỉ đơn hưởng lương mới bắt buộc có quỹ; không tự tạo balance cho loại không lương.
+        LeaveBalance balance = null;
+        if (Boolean.TRUE.equals(request.getLeaveType().getIsPaid())) {
+            balance = leaveBalances.findForUpdate(request.getEmployee().getId(), request.getLeaveType().getId(),
+                            (short) request.getStartDate().getYear())
+                    .orElseThrow(() -> conflict("LEAVE_BALANCE_NOT_FOUND", "Không tìm thấy số dư phép của nhân viên."));
+            BigDecimal remainingDays = balance.getAllocatedDays().subtract(balance.getUsedDays());
+            if (remainingDays.compareTo(request.getRequestedDays()) < 0) {
+                throw conflict("LEAVE_BALANCE_INSUFFICIENT", "Số dư phép hiện tại không đủ để duyệt đơn này.");
+            }
         }
 
+        // Sau khi kiểm tra quyền/trạng thái/quỹ xong mới đổi trạng thái và ghi lịch sử cùng transaction.
         OffsetDateTime reviewedAt = OffsetDateTime.now();
-        balance.setUsedDays(balance.getUsedDays().add(request.getRequestedDays()));
+        if (balance != null) balance.setUsedDays(balance.getUsedDays().add(request.getRequestedDays()));
         request.setStatus(LeaveRequestStatus.APPROVED);
         request.setReviewedByEmployee(reviewer);
         request.setReviewedAt(reviewedAt);
@@ -79,7 +87,7 @@ public class LeaveRequestApprovalServiceImpl implements LeaveRequestApprovalServ
                 .status(request.getStatus().name())
                 .reviewedByEmployeeId(reviewer.getId())
                 .reviewedAt(reviewedAt)
-                .remainingDays(balance.getAllocatedDays().subtract(balance.getUsedDays()))
+                .remainingDays(balance == null ? null : balance.getAllocatedDays().subtract(balance.getUsedDays()))
                 .build();
     }
 

@@ -51,10 +51,19 @@ public class NotificationController {
         return ResponseEntity.ok(notificationService.markMyNotificationRead(user.getAccount().getId(), id));
     }
 
+    @PatchMapping("/{id}/unread")
+    @Operation(summary = "Đánh dấu thông báo cá nhân chưa đọc")
+    // Lấy người nhận từ phiên; ID URL chỉ là notifications.id, không cho client chọn tài khoản nhận.
+    public ResponseEntity<NotificationResponse> markUnread(@AuthenticationPrincipal CustomUserDetails user, @PathVariable Long id) {
+        return ResponseEntity.ok(notificationService.markMyNotificationUnread(user.getAccount().getId(), id));
+    }
+
     @PatchMapping("/read-all")
     @Operation(summary = "Đánh dấu tất cả thông báo cá nhân đã đọc")
+    // Sau UPDATE đọc lại số chưa đọc từ DB; không đoán bằng 0 khi một lượt unread chạy xen giữa hai thao tác.
     public ResponseEntity<UnreadNotificationCountResponse> markAllRead(@AuthenticationPrincipal CustomUserDetails user) {
         notificationService.markAllMyNotificationsRead(user.getAccount().getId());
-        return ResponseEntity.ok(UnreadNotificationCountResponse.builder().unreadCount(0).build());
+        return ResponseEntity.ok(UnreadNotificationCountResponse.builder()
+                .unreadCount(notificationService.getUnreadCount(user.getAccount().getId())).build());
     }
 }

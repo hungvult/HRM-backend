@@ -15,6 +15,9 @@ spring:
 app:
   attendance:
     company-timezone: ${COMPANY_TIMEZONE:Asia/Ho_Chi_Minh}
+    payroll:
+      # Không có giá trị mặc định nghiệp vụ: 0 buộc L05 báo thiếu cấu hình thay vì tự đoán M.
+      standard-minutes-per-day: ${PAYROLL_STANDARD_MINUTES_PER_DAY:0}
     max-gps-accuracy-meters: ${APP_ATTENDANCE_MAX_GPS_ACCURACY_METERS:50}
     max-location-age-seconds: ${APP_ATTENDANCE_MAX_LOCATION_AGE_SECONDS:60}
     max-future-location-seconds: ${APP_ATTENDANCE_MAX_FUTURE_LOCATION_SECONDS:15}

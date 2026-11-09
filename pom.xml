@@ -39,6 +39,13 @@
 
     <dependencies>
 
+        <!-- WebP decoder thật, dùng cùng ImageIO với JPG/PNG để kiểm tra ảnh trước khi lưu. -->
+        <dependency>
+            <groupId>com.twelvemonkeys.imageio</groupId>
+            <artifactId>imageio-webp</artifactId>
+            <version>3.15.3</version>
+        </dependency>
+
         <!-- Spring Boot -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

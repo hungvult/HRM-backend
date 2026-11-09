@@ -49,7 +49,7 @@ public class DepartmentController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
-    @Operation(summary = "Cập nhật phòng ban", description = "Chỉ ADMIN/HR. Mã và trạng thái phòng ban không được thay đổi qua API này.")
+    @Operation(summary = "Cập nhật phòng ban", description = "Chỉ ADMIN/HR. Lưu mã, tên, mô tả và trạng thái trong cùng transaction.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Đã cập nhật phòng ban"),
             @ApiResponse(responseCode = "400", description = "Dữ liệu không hợp lệ", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
@@ -67,14 +67,14 @@ public class DepartmentController {
 
     @PatchMapping("/{id}/status")
     @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
-    @Operation(summary = "Kích hoạt hoặc vô hiệu hóa phòng ban", description = "Chỉ ADMIN/HR. Không thể vô hiệu hóa phòng ban đang có nhân viên được phân công hiện hành.")
+    @Operation(summary = "Kích hoạt hoặc vô hiệu hóa phòng ban", description = "Chỉ ADMIN/HR. Vô hiệu hóa giữ phân công cũ và chặn phân công mới.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Đã cập nhật trạng thái phòng ban"),
             @ApiResponse(responseCode = "400", description = "Dữ liệu không hợp lệ hoặc trạng thái không thay đổi", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "401", description = "Thiếu hoặc sai access token", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "403", description = "Chỉ ADMIN/HR được phép cập nhật", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "404", description = "Không tìm thấy phòng ban", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "409", description = "Phòng ban đang có nhân viên được phân công", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+            @ApiResponse(responseCode = "409", description = "Kích hoạt lại bị trùng tên phòng ban đang hiệu lực", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     public ResponseEntity<DepartmentResponse> updateDepartmentStatus(
             @PathVariable Long id,
@@ -115,4 +115,13 @@ public class DepartmentController {
             @RequestParam(defaultValue = "asc") String sortDirection) {
         return ResponseEntity.ok(departmentService.searchDepartments(q, status, page, size, sortBy, sortDirection));
     }
+    // id là PK danh mục; service kiểm phân công trước khi xóa mềm và ghi audit.
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
+    @Operation(summary = "Xóa danh mục không còn nhân viên", description = "Xóa mềm để giữ lịch sử; còn phân công hiện hành trả 409 và hướng dẫn phân công lại hoặc vô hiệu hóa.")
+    public ResponseEntity<Void> deleteDepartment(@PathVariable Long id, @AuthenticationPrincipal CustomUserDetails user) {
+        departmentService.deleteDepartment(user.getAccount().getId(), id);
+        return ResponseEntity.noContent().build();
+    }
+
 }

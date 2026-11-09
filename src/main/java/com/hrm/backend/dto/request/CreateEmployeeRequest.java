@@ -32,4 +32,7 @@ public class CreateEmployeeRequest {
     @NotNull
     private LocalDate hireDate;
 
+    @Size(max = 30, message = "Mã nhân viên không được vượt quá 30 ký tự.")
+    private String employeeCode;
+
 }

@@ -49,4 +49,8 @@ public class Department {
     protected void onUpdate() {
         updatedAt = OffsetDateTime.now();
     }
+    // Chỉ ẩn khỏi danh mục sau Xóa; FK trong lịch sử vẫn trỏ tới bản ghi này.
+    @Column(name = "deleted_at")
+    private java.time.OffsetDateTime deletedAt;
+
 }

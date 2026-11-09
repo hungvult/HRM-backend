@@ -31,4 +31,6 @@ public class LeaveRequestDetailResponse {
     OffsetDateTime createdAt;
     OffsetDateTime updatedAt;
     List<LeaveRequestStatusHistoryResponse> statusHistory;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    LeaveAttachmentResponse attachment;
 }

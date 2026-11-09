@@ -89,8 +89,14 @@ public class AccountAdminServiceImpl implements AccountAdminService {
                 account.getEmployee() == null ? null : employeeProfileAssembler.toDetailedDto(account.getEmployee()));
     }
 
+    /** Admin lưu tài khoản: actorId thuộc Admin đã xác thực, accountId thuộc dòng accounts đang sửa.
+     * Kiểm trùng username/email và quyền thay role, ghi accounts/account_roles/audit trong cùng transaction.
+     * Nếu role thay đổi thì thu hồi phiên của tài khoản đích; bất kỳ lỗi nào rollback toàn bộ lượt lưu. */
     @Override
     public UpdateAccountResponse update(Long actorId, Long accountId, UpdateAccountRequest req) {
+        // accountId là accounts.id của dòng đang sửa, actorId là Admin đã xác thực.
+        // Khóa đổi role trước khi đọc để bảo vệ Admin cuối; mọi lỗi sẽ rollback cả thông tin và role.
+        if (req.getRoles() != null) accounts.lockRoleChanges();
         Account target = account(accountId);
         if (req.getUsername() != null && !req.getUsername().isBlank()) {
             String username = accountMapper.normalizeUsername(req.getUsername());
@@ -105,6 +111,12 @@ public class AccountAdminServiceImpl implements AccountAdminService {
             }
         }
         accountMapper.updateEntity(req, target);
+        // Dùng lại kiểm tra role và thu hồi phiên cũ trong cùng transaction của update.
+        if (req.getRoles() != null && !normalizedRoles(req.getRoles()).equals(roleCodes(accountId))) {
+            ReplaceAccountRolesRequest roleRequest = new ReplaceAccountRolesRequest();
+            roleRequest.setRoles(req.getRoles());
+            replaceRoles(actorId, accountId, roleRequest);
+        }
         audit(actorId, "ACCOUNT_UPDATE", "accounts", target.getId(), "{\"username\":\"" + target.getUsername() + "\"}");
         return accountMapper.toUpdateResponse(target);
     }
@@ -119,8 +131,12 @@ public class AccountAdminServiceImpl implements AccountAdminService {
         audit(actorId, "ACCOUNT_STATUS_UPDATE", "accounts", target.getId(), "{\"status\":\"" + req.getStatus() + "\"}");
         return accountMapper.toStatusResponse(target);
     }
+    /** Dùng cho endpoint role cũ và lượt lưu gộp từ Web; target là accounts.id, không phải employees.id.
+     * Khóa chung các lượt đổi role, bảo vệ Admin cuối/tự gỡ quyền rồi ghi account_roles, thu hồi phiên và audit. */
     @Override
     public ReplaceAccountRolesResponse replaceRoles(Long actorId, Long accountId, ReplaceAccountRolesRequest req) {
+        // Cùng khóa DB với cập nhật gộp; không dùng khóa trong bộ nhớ vì có thể chạy nhiều container.
+        accounts.lockRoleChanges();
         Account target = account(accountId);
         Set<String> codes = normalizedRoles(req.getRoles());
         Set<String> current = roleCodes(target.getId());

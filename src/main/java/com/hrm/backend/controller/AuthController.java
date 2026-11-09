@@ -62,7 +62,7 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    @Operation(summary = "Đăng xuất phiên hiện tại")
+    @Operation(summary = "Đăng xuất phiên hiện tại", description = "Thu hồi đúng phiên chứa trong access token. Nếu phiên đã được refresh đồng thời, trả 401 để client lấy token mới bằng cookie rồi gọi đăng xuất lại.")
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({@ApiResponse(responseCode = "204", description = "Đăng xuất thành công"), @ApiResponse(responseCode = "401", description = "Thiếu hoặc sai access token")})
     public ResponseEntity<Void> logout(@AuthenticationPrincipal CustomUserDetails userDetails, 
@@ -75,7 +75,7 @@ public class AuthController {
             try {
                 sessionId = jwtService.getSessionIdFromToken(jwtService.validateAndGetClaims(token));
             } catch (Exception ignored) {
-                // If token is invalid/expired, we just ignore and clear cookie
+                // Token hết hạn giữa filter và controller sẽ để sessionId null; service trả 401 trước bước xóa cookie.
             }
         }
 

@@ -103,6 +103,28 @@ class AttendanceManualVerificationMigrationTest {
                     rejected(db, "UPDATE pg_temp.attendance_records SET check_" + side + "_gps_accuracy_meters=0 WHERE id=20");
                     rejected(db, "UPDATE pg_temp.attendance_records SET check_" + side + "_location_distance_meters=-1 WHERE id=20");
                 }
+
+                // GPS-only giữ đầy đủ bằng chứng vị trí nhưng không tự tạo Wi-Fi. Hai lượt có thể khác chế độ xác minh.
+                execute(db, """
+                    INSERT INTO pg_temp.attendance_records
+                    (id,check_in_at,check_in_work_location_id,check_in_latitude,check_in_longitude,
+                     check_in_location_distance_meters,check_in_gps_accuracy_meters,check_in_location_captured_at)
+                    VALUES (21,now(),1,10.776889,106.700806,0,5,now())
+                    """);
+                execute(db, """
+                    UPDATE pg_temp.attendance_records SET check_out_at=now(),check_out_work_location_id=1,
+                    check_out_latitude=10.776889,check_out_longitude=106.700806,
+                    check_out_location_distance_meters=0,check_out_gps_accuracy_meters=5,
+                    check_out_location_captured_at=now() WHERE id=21
+                    """);
+                for (String side : new String[]{"in", "out"}) {
+                    for (String field : new String[]{"work_location_id", "latitude", "longitude",
+                            "location_distance_meters", "gps_accuracy_meters", "location_captured_at"}) {
+                        rejected(db, "UPDATE pg_temp.attendance_records SET check_" + side + "_" + field + "=NULL WHERE id=21");
+                    }
+                    rejected(db, "UPDATE pg_temp.attendance_records SET check_" + side + "_wifi_ssid='Invented SSID' WHERE id=21");
+                    rejected(db, "UPDATE pg_temp.attendance_records SET check_" + side + "_wifi_network_id=2 WHERE id=21");
+                }
             } finally {
                 db.rollback();
             }

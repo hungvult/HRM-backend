@@ -26,6 +26,9 @@ public interface EmployeeAssignmentRepository extends JpaRepository<EmployeeAssi
               AND assignment.managerEmployee.id = :managerEmployeeId
               AND assignment.effectiveFrom <= :workDate
               AND (assignment.effectiveTo IS NULL OR assignment.effectiveTo >= :workDate)
+              AND NOT EXISTS (SELECT 1 FROM EmployeeAssignment newer WHERE newer.employee = assignment.employee
+                AND newer.effectiveFrom <= :workDate AND (newer.effectiveTo IS NULL OR newer.effectiveTo >= :workDate)
+                AND (newer.effectiveFrom > assignment.effectiveFrom OR (newer.effectiveFrom = assignment.effectiveFrom AND newer.id > assignment.id)))
             """)
     long countManagedEmployeeAtDate(@Param("employeeId") Long employeeId,
                                     @Param("managerEmployeeId") Long managerEmployeeId,

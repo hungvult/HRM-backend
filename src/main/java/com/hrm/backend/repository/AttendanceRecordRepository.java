@@ -39,6 +39,10 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
     List<AttendanceRecord> findByEmployeeIdAndWorkDateBetweenOrderByWorkDateDesc(
             Long employeeId, LocalDate from, LocalDate to);
 
+    @EntityGraph(attributePaths = "employee")
+    List<AttendanceRecord> findByEmployeeIdInAndWorkDateBetween(
+            List<Long> employeeIds, LocalDate from, LocalDate to);
+
     @Override
     @EntityGraph(attributePaths = "employee")
     Page<AttendanceRecord> findAll(org.springframework.data.jpa.domain.Specification<AttendanceRecord> specification,

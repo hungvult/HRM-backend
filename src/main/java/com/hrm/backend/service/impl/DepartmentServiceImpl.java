@@ -35,16 +35,19 @@ public class DepartmentServiceImpl implements DepartmentService {
     private final AccountRepository accounts;
     private final AuditLogRepository audits;
 
+    /** HR tạo department: mã từ form, actorAccountId là accounts.id của người thực hiện.
+     * Kiểm mã/tên theo trạng thái rồi ghi danh mục và audit cùng transaction; client cũ bỏ trạng thái vẫn ACTIVE. */
     @Override
     @Transactional
     public DepartmentResponse createDepartment(Long actorAccountId, CreateDepartmentRequest request) {
         String code = request.getCode().trim().toUpperCase(Locale.ROOT);
         String name = request.getName().trim();
+        DepartmentStatus requestedStatus = request.getStatus() == null ? DepartmentStatus.ACTIVE : request.getStatus();
 
         if (departments.existsByCodeIgnoreCase(code)) {
             throw conflict("DEPARTMENT_CODE_ALREADY_EXISTS", "Mã phòng ban đã tồn tại.");
         }
-        if (departments.existsByNameIgnoreCaseAndStatus(name, DepartmentStatus.ACTIVE)) {
+        if (requestedStatus == DepartmentStatus.ACTIVE && departments.existsByNameIgnoreCaseAndStatus(name, DepartmentStatus.ACTIVE)) {
             throw conflict("DEPARTMENT_NAME_ALREADY_EXISTS", "Tên phòng ban đang được sử dụng.");
         }
 
@@ -55,7 +58,7 @@ public class DepartmentServiceImpl implements DepartmentService {
                 .code(code)
                 .name(name)
                 .description(normalizeDescription(request.getDescription()))
-                .status(DepartmentStatus.ACTIVE)
+                .status(requestedStatus)
                 .build());
 
         audits.save(AuditLog.builder()
@@ -63,21 +66,22 @@ public class DepartmentServiceImpl implements DepartmentService {
                 .action("DEPARTMENT_CREATED")
                 .entityType("DEPARTMENT")
                 .entityId(department.getId())
-                .newData(String.format(Locale.ROOT, "{\"code\":\"%s\",\"name\":\"%s\",\"status\":\"ACTIVE\"}",
-                        escapeJson(department.getCode()), escapeJson(department.getName())))
+                .newData(departmentAuditData(department))
                 .build());
 
         return toResponse(department);
     }
 
+    /** HR sửa danh mục theo PK của department; khóa cùng bản ghi với phân công/xóa.
+     * Kiểm mã/tên trùng rồi lưu mã, tên, mô tả, trạng thái và audit nguyên khối; không đổi các FK lịch sử. */
     @Override
     @Transactional
     public DepartmentResponse updateDepartment(Long actorAccountId, Long departmentId, UpdateDepartmentRequest request) {
-        Department department = departments.findById(departmentId)
-                .orElseThrow(() -> new ResourceNotFoundException("DEPARTMENT_NOT_FOUND", "Không tìm thấy phòng ban."));
+        Department department = liveForUpdate(departmentId);
         String name = request.getName().trim();
+        DepartmentStatus requestedStatus = request.getStatus() == null ? department.getStatus() : request.getStatus();
 
-        if (department.getStatus() == DepartmentStatus.ACTIVE
+        if (requestedStatus == DepartmentStatus.ACTIVE
                 && departments.existsByNameIgnoreCaseAndStatusAndIdNot(name, DepartmentStatus.ACTIVE, departmentId)) {
             throw conflict("DEPARTMENT_NAME_ALREADY_EXISTS", "Tên phòng ban đang được sử dụng.");
         }
@@ -85,6 +89,12 @@ public class DepartmentServiceImpl implements DepartmentService {
         Account actor = accounts.findById(actorAccountId)
                 .orElseThrow(() -> new ResourceNotFoundException("ACCOUNT_NOT_FOUND", "Không tìm thấy tài khoản thực hiện."));
         String oldData = departmentAuditData(department);
+        // Mã cũ được giữ khi client cũ không gửi; kiểm trùng trước mọi cập nhật.
+        String updatedCode = request.getCode() == null ? department.getCode() : request.getCode().trim().toUpperCase(Locale.ROOT);
+        if (updatedCode.isBlank()) throw new AuthException("VALIDATION_ERROR", "Mã phòng ban là bắt buộc.", 400);
+        if (departments.existsByCodeIgnoreCaseAndIdNot(updatedCode, departmentId)) throw conflict("DEPARTMENT_CODE_ALREADY_EXISTS", "Mã phòng ban đã tồn tại.");
+        department.setCode(updatedCode);
+        department.setStatus(request.getStatus() == null ? department.getStatus() : request.getStatus());
         department.setName(name);
         department.setDescription(normalizeDescription(request.getDescription()));
         department = departments.save(department);
@@ -101,19 +111,20 @@ public class DepartmentServiceImpl implements DepartmentService {
         return toResponse(department);
     }
 
+    /** HR xác nhận đổi trạng thái danh mục; khóa PK department rồi kiểm trạng thái và tên khi kích hoạt.
+     * INACTIVE giữ nguyên employee_assignments hiện có, chặn lượt phân công mới và ghi trạng thái trước/sau vào audit. */
     @Override
     @Transactional
     public DepartmentResponse updateDepartmentStatus(Long actorAccountId, Long departmentId,
                                                      UpdateDepartmentStatusRequest request) {
-        Department department = departments.findById(departmentId)
-                .orElseThrow(() -> new ResourceNotFoundException("DEPARTMENT_NOT_FOUND", "Không tìm thấy phòng ban."));
+        Department department = liveForUpdate(departmentId);
         DepartmentStatus newStatus = request.getStatus();
         if (department.getStatus() == newStatus) {
             throw new AuthException("DEPARTMENT_STATUS_UNCHANGED", "Trạng thái mới phải khác trạng thái hiện tại.", 400);
         }
-        if (newStatus == DepartmentStatus.INACTIVE && assignments.existsByDepartmentIdAndIsCurrentTrue(departmentId)) {
-            throw conflict("DEPARTMENT_HAS_ACTIVE_ASSIGNMENTS",
-                    "Không thể vô hiệu hóa phòng ban đang có nhân viên được phân công.");
+        // Vô hiệu hóa giữ phân công cũ; kích hoạt lại phải tránh trùng tên đang hiệu lực.
+        if (newStatus == DepartmentStatus.ACTIVE && departments.existsByNameIgnoreCaseAndStatusAndIdNot(department.getName(), DepartmentStatus.ACTIVE, departmentId)) {
+            throw conflict("DEPARTMENT_NAME_ALREADY_EXISTS", "Tên danh mục đang được sử dụng.");
         }
 
         Account actor = accounts.findById(actorAccountId)
@@ -139,7 +150,7 @@ public class DepartmentServiceImpl implements DepartmentService {
         if (departmentId == null || departmentId < 1) {
             throw new AuthException("VALIDATION_ERROR", "ID phòng ban không hợp lệ.", 400);
         }
-        Department department = departments.findById(departmentId)
+        Department department = departments.findById(departmentId).filter(d -> d.getDeletedAt() == null)
                 .orElseThrow(() -> new ResourceNotFoundException("DEPARTMENT_NOT_FOUND", "Không tìm thấy phòng ban."));
         return toResponse(department);
     }
@@ -220,4 +231,27 @@ public class DepartmentServiceImpl implements DepartmentService {
     private AuthException conflict(String code, String message) {
         return new AuthException(code, message, 409);
     }
+    /** Dùng khi HR ghi danh mục: id thuộc departments; khóa tới hết transaction để không đua với phân công/xóa. */
+    private Department liveForUpdate(Long id) {
+        return departments.findLiveByIdForUpdate(id).orElseThrow(() ->
+                new ResourceNotFoundException("DEPARTMENT_NOT_FOUND", "Không tìm thấy danh mục."));
+    }
+
+    /** Chỉ xóa khi không còn phân công hiện hành; giữ nguyên FK lịch sử, ghi audit cùng transaction. */
+    @Override
+    @Transactional
+    public void deleteDepartment(Long actorAccountId, Long id) {
+        Department item = liveForUpdate(id);
+        if (assignments.existsByDepartmentIdAndIsCurrentTrue(id)) {
+            throw conflict("DEPARTMENT_HAS_ACTIVE_ASSIGNMENTS", "Không thể xóa danh mục đang có nhân viên. Vui lòng phân công lại nhân viên hoặc vô hiệu hóa danh mục.");
+        }
+        String before = departmentAuditData(item);
+        item.setStatus(DepartmentStatus.INACTIVE);
+        item.setDeletedAt(java.time.OffsetDateTime.now());
+        departments.saveAndFlush(item);
+        audits.save(AuditLog.builder().actorAccount(accounts.getReferenceById(actorAccountId))
+                .action("DEPARTMENT_DELETED").entityType("DEPARTMENT").entityId(id)
+                .oldData(before).newData(departmentAuditData(item)).build());
+    }
+
 }

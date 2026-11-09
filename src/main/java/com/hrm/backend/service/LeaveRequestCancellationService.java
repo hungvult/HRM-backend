@@ -4,4 +4,5 @@ import com.hrm.backend.dto.response.LeaveRequestDetailResponse;
 
 public interface LeaveRequestCancellationService {
     LeaveRequestDetailResponse cancel(Long accountId, Long leaveRequestId);
+    LeaveRequestDetailResponse cancel(Long accountId, Long leaveRequestId, String reason);
 }

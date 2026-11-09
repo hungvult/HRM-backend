@@ -18,4 +18,6 @@ public interface DepartmentService {
 
     PagedResponse<DepartmentResponse> searchDepartments(String q, DepartmentStatus status, int page, int size,
                                                          String sortBy, String sortDirection);
+    void deleteDepartment(Long actorAccountId, Long id);
+
 }

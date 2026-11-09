@@ -54,6 +54,21 @@ class CompanyEgressIpWifiVerifierTest {
     }
 
     @Test
+    void invalidCidrAndMissingConfiguredNetworkRemainConfigurationErrors() {
+        var properties = new AttendanceProperties();
+        var source = new AttendanceProperties.TrustedWifiSource();
+        source.setCidr("203.0.113.0/99"); source.setWifiNetworkId(8L);
+        properties.setTrustedSources(List.of(source));
+        var request = mock(HttpServletRequest.class);
+        when(request.getRemoteAddr()).thenReturn("203.0.113.24");
+        var networks = mock(WorkLocationWifiNetworkRepository.class);
+        var verifier = new CompanyEgressIpWifiVerifier(properties, networks);
+        assertThrows(IllegalStateException.class, () -> verifier.verify(request));
+        source.setCidr("203.0.113.0/24");
+        assertThrows(IllegalStateException.class, () -> verifier.verify(request));
+    }
+
+    @Test
     void verify_usesTcpSourceAddressWhenRequestDoesNotComeFromTrustedProxy() {
         AttendanceProperties properties = new AttendanceProperties();
         AttendanceProperties.TrustedWifiSource source = new AttendanceProperties.TrustedWifiSource();

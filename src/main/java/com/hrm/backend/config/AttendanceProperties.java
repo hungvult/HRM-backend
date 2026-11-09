@@ -24,6 +24,20 @@ public class AttendanceProperties {
     @NotBlank
     private String companyTimezone = "Asia/Ho_Chi_Minh";
 
+    // Mặc định yêu cầu Wi-Fi như luồng hiện có; môi trường QA có thể tạm tắt để chỉ xác minh GPS.
+    private boolean wifiVerificationEnabled = true;
+
+    // AND giữ hợp đồng cũ; CD chọn OR khi phát hành bản Mobile hỗ trợ thiếu GPS.
+    @NotNull
+    private VerificationMode verificationMode = VerificationMode.AND;
+
+    public enum VerificationMode { AND, OR }
+
+    // ID work_locations phía server chọn khi tạm bỏ Wi-Fi, không lấy địa điểm từ dữ liệu client gửi.
+    @NotNull
+    @Positive
+    private Long gpsWorkLocationId = 1L;
+
     @Positive
     private int maxGpsAccuracyMeters = 50;
 

@@ -44,9 +44,17 @@ public class EmployeeServiceImpl implements EmployeeService {
     private final AuditLogRepository audits;
     private final EmployeeMapper employeeMapper;
     private final EmployeeStatusMapper employeeStatusMapper;
+    /** HR tạo hồ sơ với mã nhập trên Web; actorAccountId là tài khoản thực hiện, chưa có employeeId trước khi lưu.
+     * Kiểm trùng mã/email, tạo employees WORKING và lịch sử/audit cùng transaction. Client cũ bỏ mã vẫn tự sinh mã rảnh. */
     @Override
     @Transactional
     public EmployeeDto createEmployee(Long actorAccountId, CreateEmployeeRequest request) {
+        // Mã Web do HR nhập; mã trống từ client cũ vẫn dùng bộ sinh hiện có.
+        String requestedCode = request.getEmployeeCode() == null || request.getEmployeeCode().isBlank()
+                ? null : request.getEmployeeCode().trim().toUpperCase(java.util.Locale.ROOT);
+        if (requestedCode != null && employees.existsByEmployeeCodeIgnoreCase(requestedCode)) {
+            throw conflict("EMPLOYEE_CODE_ALREADY_EXISTS", "Mã nhân viên đã tồn tại.");
+        }
         String email = employeeMapper.normalizeEmail(request.getEmail());
         if (employees.existsByEmailIgnoreCase(email)) {
             throw conflict("EMPLOYEE_EMAIL_ALREADY_EXISTS", "Email nhân viên đã tồn tại.");
@@ -60,7 +68,7 @@ public class EmployeeServiceImpl implements EmployeeService {
         employee.setEmployeeCode(temporaryEmployeeCode());
         employee.setEmploymentStatus(EmploymentStatus.WORKING);
         employee = employees.saveAndFlush(employee);
-        employee.setEmployeeCode(generateEmployeeCode(employee.getId()));
+        employee.setEmployeeCode(requestedCode == null ? generateEmployeeCode(employee.getId()) : requestedCode);
         employee = employees.save(employee);
 
         statusHistories.save(EmployeeStatusHistory.builder()
@@ -206,7 +214,14 @@ public class EmployeeServiceImpl implements EmployeeService {
         return "TMP" + UUID.randomUUID().toString().replace("-", "").substring(0, 24).toUpperCase(Locale.ROOT);
     }
     private String generateEmployeeCode(Long employeeId) {
-        return String.format(Locale.ROOT, "NV%06d", employeeId);
+        // Mã nhập tay có thể chiếm NV theo ID tương lai; client cũ nhận mã rảnh cùng tiền tố.
+        String base = String.format(Locale.ROOT, "NV%06d", employeeId);
+        String candidate = base;
+        for (int suffix = 2; employees.existsByEmployeeCodeIgnoreCase(candidate); suffix++) {
+            if (suffix > 1000) throw conflict("EMPLOYEE_CODE_ALREADY_EXISTS", "Chưa thể cấp mã nhân viên. Vui lòng thử lại.");
+            candidate = base + "-" + suffix;
+        }
+        return candidate;
     }
     private void validateTextFields(UpdateEmployeeRequest request) {
         if (request.getFullName() != null && request.getFullName().isBlank()

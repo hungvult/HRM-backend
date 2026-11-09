@@ -15,4 +15,6 @@ public interface PositionService {
     PositionResponse updatePositionStatus(Long actorAccountId, Long positionId, UpdatePositionStatusRequest request);
 
     PositionResponse getPosition(Long positionId);
+    void deletePosition(Long actorAccountId, Long id);
+
 }
