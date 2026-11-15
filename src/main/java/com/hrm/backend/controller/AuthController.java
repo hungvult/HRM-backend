@@ -91,7 +91,7 @@ public class AuthController {
         Cookie cookie = new Cookie(REFRESH_TOKEN_COOKIE_NAME, token);
         cookie.setHttpOnly(true);
         cookie.setSecure(true); // Should be true in production (requires HTTPS)
-        cookie.setPath("/api/v1/auth");
+        cookie.setPath("/v1/auth");
         cookie.setMaxAge(maxAge);
         cookie.setAttribute("SameSite", "Lax");
         response.addCookie(cookie);
